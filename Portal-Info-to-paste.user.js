@@ -21,6 +21,32 @@ function wrapper(plugin_info) {
   // PLUGIN START ////////////////////////////////////////////////////////
   window.plugin.thanks4lmfyp = function () { };
 
+  window.plugin.thanks4lmfyp.missionDetail = function (data) {
+    $('#thanks4lmfyp1').remove();
+
+    var title = data.portalData.title;
+    var guid = data.guid;
+    var pdetails = portalDetail.get(guid);
+    // var owner = pdetails.owner;
+    var name = escapeJavascriptString(title);
+
+    if (pdetails) {
+      data = getPortalSummaryData(pdetails);
+    }
+
+    // 旧形式のurl
+    // var url = "https://link.ingress.com/?link=https%3A%2F%2Fintel.ingress.com%2Fportal%2F" + guid + "&apn=com.nianticproject.ingress&isi=576505181&ibi=com.google.ingress&ifl=https%3A%2F%2Fapps.apple.com%2Fapp%2Fingress%2Fid576505181" + "&ofl=https%3a%2f%2fintel.ingress.com%2fintel%3fpll%3d" + lat +","+ lng;
+    var url = "https://link.ingress.com/mission/" + guid;
+    // https://link.ingress.com/mission/834b060c1f14462982ab725df23108eb.1c
+
+    var copiedtext = name + "\\n" + url;
+
+    // コピーボタン
+    $('.linkdetails').append("<button onclick='navigator.clipboard.writeText(\"" + copiedtext + "\");document.getElementById(\"message\").textContent=\"コピーしました!\"' >ダイナミックリンクコピー</button><p id='message'></p>");
+    // テキストボックス
+    // $('.linkdetails').append('<textarea id="thanks4lmfyp" name="thanks4lmfyp" onclick="javascript:this.focus();this.select()" >' + copiedtext + '</textarea>');
+  }
+
   window.plugin.thanks4lmfyp.portalDetail = function (data) {
     $('#thanks4lmfyp').remove();
 
@@ -49,6 +75,7 @@ function wrapper(plugin_info) {
   var setup = function () {
     // $('<style>').prop('type', 'text/css').html('#thanks4lmfyp {display: block; width: 100%; height: 3em; margin: 5px;}').appendTo('head');
     window.addHook('portalDetailsUpdated', window.plugin.thanks4lmfyp.portalDetail);
+    window.addHook('missionDetailsUpdated', window.plugin.thanks4lmfyp.missionDetail);
   }
 
   // PLUGIN END //////////////////////////////////////////////////////////
