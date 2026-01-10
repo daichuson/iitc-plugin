@@ -586,6 +586,34 @@ function wrapper(plugin_info) {
 
       /////////////////////////////////////////////////////
       // TODO こぴーできるように
+
+      const copyImage = async () => {
+
+        var url = "https://link.ingress.com/mission/" + mission.guid;
+        var copiedtext = ""
+        copiedtext = mission.title + "\n" + url + "\n";
+
+        const responsePromise = await fetch(mission.image);
+        const blob = responsePromise.blob();
+        const textBlob = new Blob([copiedtext], { type: 'text/plain' });
+
+        // const data = [new ClipboardItem({ "image/png": blob , "text/plain": textBlob })];
+        const data = new ClipboardItem({
+          'text/plain': textBlob,
+          'image/png': blob // 画像のMIMEタイプ（例: 'image/png'）
+        });
+
+        navigator.clipboard.write([data]).then(
+          () => { console.log("success"); },
+          (msg) => { console.log(`fail: ${msg}`); }
+        );
+      }
+      
+      var copylink2 = container.appendChild(document.createElement('input'));
+      copylink2.type = "button";
+      copylink2.value = "copy+";
+      copylink2.addEventListener("click", copyImage);
+
       var copylink = container.appendChild(document.createElement('input'));
       copylink.type = "button";
       copylink.value = "copy";
@@ -627,16 +655,19 @@ function wrapper(plugin_info) {
           // v1
           // copiedtext = mission.title + "\n" + url;
           // v2 tmp 
-          // var copiedtext = "";
-          // if (mission_length != "") {
-          //   copiedtext = mission.title + "( length : " + len + " )" + "\n" + url;
-          // } else {
-          //   copiedtext = mission.title + "\n" + url;
-          // }
-          // v2
           var copiedtext = "";
           if (mission_length != "") {
-            copiedtext = "TITLE : " + mission.title + "\nLENGTH : " + len + "\n" + url;
+            copiedtext = mission.title + "( length : " + len + " )" + "\n" + url;
+          } else {
+            copiedtext = mission.title + "\n" + url;
+          }
+          // v2
+
+
+  
+          var copiedtext = "";
+          if (mission_length != "") {
+            copiedtext = "TITLE : " + mission.title + "\nLENGTH : " + len + "\n" + url  ;
           } else {
             copiedtext = "TITLE : " + mission.title + "\n" + url;
           }
