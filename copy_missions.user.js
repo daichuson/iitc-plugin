@@ -587,11 +587,106 @@ function wrapper(plugin_info) {
       /////////////////////////////////////////////////////
       // TODO こぴーできるように
 
+      const copyImage2 = async () => {
+
+        var url = "https://link.ingress.com/mission/" + mission.guid;
+
+        var mission_length = "";
+        if (cachedMission) {
+
+          mission_length = cachedMission.waypoints
+            .filter(function (waypoint) {
+              return !!waypoint.portal;
+            })
+            .map(function (waypoint) {
+              return L.latLng(waypoint.portal.latE6 / 1e6, waypoint.portal.lngE6 / 1e6);
+            })
+            .map(function (latlng1, i, latlngs) {
+              if (i === 0) return 0;
+              var latlng2 = latlngs[i - 1];
+              return latlng1.distanceTo(latlng2);
+            })
+            .reduce(function (a, b) {
+              return a + b;
+            }, 0);
+
+          if (mission_length > 0) {
+            if (mission_length > 1000) {
+              mission_length = Math.round(mission_length / 100) / 10 + 'km';
+            } else {
+              mission_length = Math.round(mission_length * 10) / 10 + 'm';
+            }
+          }
+
+
+        }
+
+        var copiedtext = "";
+        if (mission_length != "") {
+          copiedtext = "TITLE : " + mission.title + "\nLENGTH : " + len + "\n" + url;
+        } else {
+          copiedtext = "TITLE : " + mission.title + "\n" + url;
+        }
+
+        const responsePromise = await fetch(mission.image);
+        const blob = responsePromise.blob();
+        const textBlob = new Blob([copiedtext], { type: 'text/plain' });
+
+        // const data = [new ClipboardItem({ "image/png": blob , "text/plain": textBlob })];
+        const data = new ClipboardItem({
+          // 'text/plain': textBlob,
+          'image/png': blob // 画像のMIMEタイプ（例: 'image/png'）
+        });
+
+        navigator.clipboard.write([data]).then(
+          () => { console.log("success"); },
+          (msg) => { console.log(`fail: ${msg}`); }
+        );
+      }
+      
+      var copylink3 = container.appendChild(document.createElement('input'));
+      copylink3.type = "button";
+      copylink3.value = "copy image";
+      copylink3.addEventListener("click", copyImage2);
+
       const copyImage = async () => {
 
         var url = "https://link.ingress.com/mission/" + mission.guid;
-        var copiedtext = ""
-        copiedtext = mission.title + "\n" + url + "\n";
+
+        var mission_length = "";
+        if (cachedMission) {
+
+          mission_length = cachedMission.waypoints
+            .filter(function (waypoint) {
+              return !!waypoint.portal;
+            })
+            .map(function (waypoint) {
+              return L.latLng(waypoint.portal.latE6 / 1e6, waypoint.portal.lngE6 / 1e6);
+            })
+            .map(function (latlng1, i, latlngs) {
+              if (i === 0) return 0;
+              var latlng2 = latlngs[i - 1];
+              return latlng1.distanceTo(latlng2);
+            })
+            .reduce(function (a, b) {
+              return a + b;
+            }, 0);
+
+          if (mission_length > 0) {
+            if (mission_length > 1000) {
+              mission_length = Math.round(mission_length / 100) / 10 + 'km';
+            } else {
+              mission_length = Math.round(mission_length * 10) / 10 + 'm';
+            }
+          }
+        }
+
+        var copiedtext = "";
+        if (mission_length != "") {
+          copiedtext = "TITLE : " + mission.title + "\nLENGTH : " + len + "\n" + url;
+        } else {
+          copiedtext = "TITLE : " + mission.title + "\n" + url;
+        }
 
         const responsePromise = await fetch(mission.image);
         const blob = responsePromise.blob();
@@ -655,16 +750,14 @@ function wrapper(plugin_info) {
           // v1
           // copiedtext = mission.title + "\n" + url;
           // v2 tmp 
-          var copiedtext = "";
-          if (mission_length != "") {
-            copiedtext = mission.title + "( length : " + len + " )" + "\n" + url;
-          } else {
-            copiedtext = mission.title + "\n" + url;
-          }
+          // var copiedtext = "";
+          // if (mission_length != "") {
+          //   copiedtext = mission.title + "( length : " + len + " )" + "\n" + url;
+          // } else {
+          //   copiedtext = mission.title + "\n" + url;
+          // }
           // v2
 
-
-  
           var copiedtext = "";
           if (mission_length != "") {
             copiedtext = "TITLE : " + mission.title + "\nLENGTH : " + len + "\n" + url  ;
