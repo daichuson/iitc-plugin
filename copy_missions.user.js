@@ -587,68 +587,73 @@ function wrapper(plugin_info) {
       /////////////////////////////////////////////////////
       // TODO こぴーできるように
 
-      const copyImage2 = async () => {
+      ////////////////////////////////////////
+      // image
+      const copyImageMissionImage = async () => {
 
-        var url = "https://link.ingress.com/mission/" + mission.guid;
+        // var url = "https://link.ingress.com/mission/" + mission.guid;
+        // var mission_length = "";
+        // if (cachedMission) {
+        //   mission_length = cachedMission.waypoints
+        //     .filter(function (waypoint) {
+        //       return !!waypoint.portal;
+        //     })
+        //     .map(function (waypoint) {
+        //       return L.latLng(waypoint.portal.latE6 / 1e6, waypoint.portal.lngE6 / 1e6);
+        //     })
+        //     .map(function (latlng1, i, latlngs) {
+        //       if (i === 0) return 0;
+        //       var latlng2 = latlngs[i - 1];
+        //       return latlng1.distanceTo(latlng2);
+        //     })
+        //     .reduce(function (a, b) {
+        //       return a + b;
+        //     }, 0);
 
-        var mission_length = "";
-        if (cachedMission) {
+        //   if (mission_length > 0) {
+        //     if (mission_length > 1000) {
+        //       mission_length = Math.round(mission_length / 100) / 10 + 'km';
+        //     } else {
+        //       mission_length = Math.round(mission_length * 10) / 10 + 'm';
+        //     }
+        //   }
+        // }
 
-          mission_length = cachedMission.waypoints
-            .filter(function (waypoint) {
-              return !!waypoint.portal;
-            })
-            .map(function (waypoint) {
-              return L.latLng(waypoint.portal.latE6 / 1e6, waypoint.portal.lngE6 / 1e6);
-            })
-            .map(function (latlng1, i, latlngs) {
-              if (i === 0) return 0;
-              var latlng2 = latlngs[i - 1];
-              return latlng1.distanceTo(latlng2);
-            })
-            .reduce(function (a, b) {
-              return a + b;
-            }, 0);
+        // var copiedtext = "";
+        // if (mission_length != "") {
+        //   copiedtext = "TITLE : " + mission.title + "\nLENGTH : " + len + "\n" + url;
+        // } else {
+        //   copiedtext = "TITLE : " + mission.title + "\n" + url;
+        // }
 
-          if (mission_length > 0) {
-            if (mission_length > 1000) {
-              mission_length = Math.round(mission_length / 100) / 10 + 'km';
-            } else {
-              mission_length = Math.round(mission_length * 10) / 10 + 'm';
-            }
-          }
-
-
-        }
-
-        var copiedtext = "";
-        if (mission_length != "") {
-          copiedtext = "TITLE : " + mission.title + "\nLENGTH : " + len + "\n" + url;
-        } else {
-          copiedtext = "TITLE : " + mission.title + "\n" + url;
-        }
-
+        ///////////////////////////
+        // 画像とテキストを一緒にコピーするやつ
         const responsePromise = await fetch(mission.image);
         const blob = responsePromise.blob();
-        const textBlob = new Blob([copiedtext], { type: 'text/plain' });
+        const textBlob = new Blob([mission.image], { type: 'text/plain' });
 
         // const data = [new ClipboardItem({ "image/png": blob , "text/plain": textBlob })];
         const data = new ClipboardItem({
-          // 'text/plain': textBlob,
+          'text/plain': textBlob,
           'image/png': blob // 画像のMIMEタイプ（例: 'image/png'）
         });
-
         navigator.clipboard.write([data]).then(
-          () => { console.log("success"); },
+          () => { console.log("success " + mission.title); },
           (msg) => { console.log(`fail: ${msg}`); }
         );
-      }
-      
-      var copylink3 = container.appendChild(document.createElement('input'));
-      copylink3.type = "button";
-      copylink3.value = "copy image";
-      copylink3.addEventListener("click", copyImage2);
+        ///////////////////
 
+        // navigator.clipboard.writeText(mission.image);
+      }
+
+      var copyLinkMissionImage = container.appendChild(document.createElement('input'));
+      copyLinkMissionImage.type = "button";
+      copyLinkMissionImage.value = "copy image";
+      copyLinkMissionImage.addEventListener("click", copyImageMissionImage);
+      /////////////////////////////////////////
+
+      /////////////////////////////////////////
+      // image + text
       const copyImage = async () => {
 
         var url = "https://link.ingress.com/mission/" + mission.guid;
@@ -699,16 +704,19 @@ function wrapper(plugin_info) {
         });
 
         navigator.clipboard.write([data]).then(
-          () => { console.log("success"); },
+          () => { console.log("success " + mission.title); },
           (msg) => { console.log(`fail: ${msg}`); }
         );
       }
-      
-      var copylink2 = container.appendChild(document.createElement('input'));
-      copylink2.type = "button";
-      copylink2.value = "copy+";
-      copylink2.addEventListener("click", copyImage);
 
+      var copyLinkImageAndText = container.appendChild(document.createElement('input'));
+      copyLinkImageAndText.type = "button";
+      copyLinkImageAndText.value = "copy+";
+      copyLinkImageAndText.addEventListener("click", copyImage);
+      ////////////////////////////
+
+      ////////////////////////////
+      // テキストのみ
       var copylink = container.appendChild(document.createElement('input'));
       copylink.type = "button";
       copylink.value = "copy";
@@ -760,13 +768,16 @@ function wrapper(plugin_info) {
 
           var copiedtext = "";
           if (mission_length != "") {
-            copiedtext = "TITLE : " + mission.title + "\nLENGTH : " + len + "\n" + url  ;
+            copiedtext = "TITLE : " + mission.title + "\nLENGTH : " + len + "\n" + url;
           } else {
             copiedtext = "TITLE : " + mission.title + "\n" + url;
           }
 
           // コピーボタン
-          navigator.clipboard.writeText(copiedtext);
+          navigator.clipboard.writeText(copiedtext).then(
+            () => { console.log("success " + mission.title); },
+            (msg) => { console.log(`fail: ${msg}`); }
+          );
           // コピーしたのをわかりやすくしたかっただけのやつ。スマホのほうではいらなかったのでいったんコメントアウト
           // document.getElementById("mission_copy_" + mission.guid).textContent="done"
 
