@@ -42,7 +42,7 @@ function wrapper(plugin_info) {
 
     // コピーボタン
     // $('.linkdetails').append("<button onclick='navigator.clipboard.writeText(\"" + copiedtext + "\");document.getElementById(\"message\").textContent=\"コピーしました!\"' >ダイナミックリンクコピー</button><p id='message'></p>");
-    $('.linkdetails').append("<button onclick='navigator.clipboard.writeText(\"" + copiedtext + "\");' >ダイナミックリンクコピー</button>");
+    $('.linkdetails').append("<button onclick='navigator.clipboard.writeText(\"" + copiedtext + "\");' >Copy PortalLink</button>");
     // テキストボックス
     // $('.linkdetails').append('<textarea id="thanks4lmfyp" name="thanks4lmfyp" onclick="javascript:this.focus();this.select()" >' + copiedtext + '</textarea>');
   }
@@ -50,7 +50,7 @@ function wrapper(plugin_info) {
   var setup = function () {
     // $('<style>').prop('type', 'text/css').html('#thanks4lmfyp {display: block; width: 100%; height: 3em; margin: 5px;}').appendTo('head');
     window.addHook('portalDetailsUpdated', window.plugin.thanks4lmfyp.portalDetail);
-    window.addHook('missionDetailsUpdated', window.plugin.thanks4lmfyp.missionDetail);
+    // window.addHook('missionDetailsUpdated', window.plugin.thanks4lmfyp.missionDetail);
   }
 
   // PLUGIN END //////////////////////////////////////////////////////////

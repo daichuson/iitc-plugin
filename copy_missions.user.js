@@ -16,6 +16,7 @@
 // @grant          none
 // ==/UserScript==
 
+
 function wrapper(plugin_info) {
   // ensure plugin framework is there, even if iitc is not yet loaded
   if (typeof window.plugin !== 'function') window.plugin = function () { };
@@ -63,6 +64,22 @@ function wrapper(plugin_info) {
     Portal: 1,
     FieldTrip: 2,
   };
+  var DEVICE = "";
+  function device() {
+    const ua = navigator.userAgent;
+    if (ua.indexOf('iPhone') > 0 || ua.indexOf('iPod') > 0 || ua.indexOf('Android') > 0 && ua.indexOf('Mobile') > 0) {
+      return 'mobile';
+    } else if (ua.indexOf('iPad') > 0 || ua.indexOf('Android') > 0) {
+      return 'tablet';
+    } else {
+      return 'desktop';
+    }
+  }
+
+  window.onload = function () {
+    DEVICE = device();
+    console.log(DEVICE);
+  }
 
   var decodeWaypoint = function (data) {
     var result = {
@@ -589,208 +606,172 @@ function wrapper(plugin_info) {
 
       ////////////////////////////////////////
       // image
-      const copyImageMissionImage = async () => {
+      DEVICE = device();
 
-        // var url = "https://link.ingress.com/mission/" + mission.guid;
-        // var mission_length = "";
-        // if (cachedMission) {
-        //   mission_length = cachedMission.waypoints
-        //     .filter(function (waypoint) {
-        //       return !!waypoint.portal;
-        //     })
-        //     .map(function (waypoint) {
-        //       return L.latLng(waypoint.portal.latE6 / 1e6, waypoint.portal.lngE6 / 1e6);
-        //     })
-        //     .map(function (latlng1, i, latlngs) {
-        //       if (i === 0) return 0;
-        //       var latlng2 = latlngs[i - 1];
-        //       return latlng1.distanceTo(latlng2);
-        //     })
-        //     .reduce(function (a, b) {
-        //       return a + b;
-        //     }, 0);
+      console.log("DEVICE : " + DEVICE);
+      // if (DEVICE == 'desktop') {
+      //   const copyImageMissionImage = async () => {
+      //     ///////////////////////////
+      //     // 画像とテキストを一緒にコピーするやつ
+      //     const responsePromise = await fetch(mission.image);
+      //     const blob = responsePromise.blob();
+      //     const textBlob = new Blob([mission.image], { type: 'text/plain' });
 
-        //   if (mission_length > 0) {
-        //     if (mission_length > 1000) {
-        //       mission_length = Math.round(mission_length / 100) / 10 + 'km';
-        //     } else {
-        //       mission_length = Math.round(mission_length * 10) / 10 + 'm';
-        //     }
-        //   }
-        // }
+      //     const data = new ClipboardItem({
+      //       'text/plain': textBlob,
+      //       'image/png': blob // 画像のMIMEタイプ（例: 'image/png'）
+      //     });
+      //     navigator.clipboard.write([data]).then(
+      //       () => { /*console.log("success " + mission.title);*/ },
+      //       (msg) => { console.log(`fail: ${msg}`); }
+      //     );
+      //     ///////////////////
+      //   }
 
-        // var copiedtext = "";
-        // if (mission_length != "") {
-        //   copiedtext = "TITLE : " + mission.title + "\nLENGTH : " + len + "\n" + url;
-        // } else {
-        //   copiedtext = "TITLE : " + mission.title + "\n" + url;
-        // }
+      //   var copyLinkMissionImage = container.appendChild(document.createElement('input'));
+      //   copyLinkMissionImage.type = "button";
+      //   copyLinkMissionImage.value = "CopyIMG URL(PC)";
+      //   copyLinkMissionImage.addEventListener("click", copyImageMissionImage);
 
-        ///////////////////////////
-        // 画像とテキストを一緒にコピーするやつ
-        const responsePromise = await fetch(mission.image);
-        const blob = responsePromise.blob();
-        const textBlob = new Blob([mission.image], { type: 'text/plain' });
+      // } else {
 
-        // const data = [new ClipboardItem({ "image/png": blob , "text/plain": textBlob })];
-        const data = new ClipboardItem({
-          'text/plain': textBlob,
-          'image/png': blob // 画像のMIMEタイプ（例: 'image/png'）
-        });
-        navigator.clipboard.write([data]).then(
-          () => { console.log("success " + mission.title); },
-          (msg) => { console.log(`fail: ${msg}`); }
-        );
-        ///////////////////
+      // }
+      /////////////////////////////////////////
+      if (DEVICE === 'desktop') {
+        const copyImage = async () => {
+          var url = "https://link.ingress.com/mission/" + mission.guid;
+          var copiedtext = (typeof len !== 'undefined')
+            ? "TITLE : " + mission.title + "\nLENGTH : " + len + "\n" + url
+            : "TITLE : " + mission.title + "\n" + url;
 
-        // navigator.clipboard.writeText(mission.image);
+          var msgEl = document.getElementById("mission_copy_" + mission.guid);
+
+          try {
+            if (typeof ClipboardItem === 'undefined') {
+              throw new Error('ClipboardItem not supported');
+            }
+            const response = await fetch(mission.image);
+            const blob = await response.blob(); // ← await追加
+            const textBlob = new Blob([copiedtext], { type: 'text/plain' });
+
+            const data = new ClipboardItem({
+              'text/plain': textBlob,
+              'image/png': blob
+            });
+
+            await navigator.clipboard.write([data]);
+            if (msgEl) msgEl.textContent = "done(Copy+(PC))";
+          } catch (err) {
+            console.log(`fail: ${err}`);
+            if (msgEl) msgEl.textContent = "error: " + err.message; // consoleが見れなくてもここで確認可能
+          }
+        };
+
+        var copyLinkImageAndText = container.appendChild(document.createElement('input'));
+        copyLinkImageAndText.type = "button";
+        copyLinkImageAndText.value = "Copy+(PC)";
+        copyLinkImageAndText.addEventListener("click", copyImage);
       }
+      // if (DEVICE == 'desktop') {
+      //   /////////////////////////////////////////
+      //   // image + text
+      //   const copyImage = async () => {
 
-      var copyLinkMissionImage = container.appendChild(document.createElement('input'));
-      copyLinkMissionImage.type = "button";
-      copyLinkMissionImage.value = "copy image";
-      copyLinkMissionImage.addEventListener("click", copyImageMissionImage);
-      /////////////////////////////////////////
+      //     var url = "https://link.ingress.com/mission/" + mission.guid;
 
-      /////////////////////////////////////////
-      // image + text
-      const copyImage = async () => {
+      //     var copiedtext = "";
+      //     if (typeof len !== 'undefined') {
+      //       copiedtext = "TITLE : " + mission.title + "\nLENGTH : " + len + "\n" + url;
+      //     } else {
+      //       copiedtext = "TITLE : " + mission.title + "\n" + url;
+      //     }
+
+      //     const responsePromise = await fetch(mission.image);
+      //     const blob = responsePromise.blob();
+      //     const textBlob = new Blob([copiedtext], { type: 'text/plain' });
+
+      //     const data = new ClipboardItem({
+      //       'text/plain': textBlob,
+      //       'image/png': blob // 画像のMIMEタイプ（例: 'image/png'）
+      //     });
+
+      //     navigator.clipboard.write([data]).then(
+      //       () => { /*console.log("success " + mission.title);*/ },
+      //       (msg) => { console.log(`fail: ${msg}`); }
+      //     );
+      //     if (DEVICE == 'desktop') {
+      //       document.getElementById("mission_copy_" + mission.guid).textContent="done(Copy+(PC))"
+      //     }
+      //   }
+
+      //   var copyLinkImageAndText = container.appendChild(document.createElement('input'));
+      //   copyLinkImageAndText.type = "button";
+      //   copyLinkImageAndText.value = "Copy+(PC)";
+      //   copyLinkImageAndText.addEventListener("click", copyImage);
+      //   ////////////////////////////
+      // }
+      var copylink = container.appendChild(document.createElement('input'));
+      copylink.type = "button";   // ← これが無いとテキストボックスになる
+      copylink.value = "COPY";    // ← ボタンに表示するラベル
+      copylink.addEventListener('click', function (ev) {
+        ev.preventDefault();
 
         var url = "https://link.ingress.com/mission/" + mission.guid;
+        var copiedtext = (typeof len !== 'undefined')
+          ? "TITLE : " + mission.title + "\nLENGTH : " + len + "\n" + url
+          : "TITLE : " + mission.title + "\n" + url;
 
-        var mission_length = "";
-        if (cachedMission) {
+        var msgEl = document.getElementById("mission_copy_" + mission.guid);
 
-          mission_length = cachedMission.waypoints
-            .filter(function (waypoint) {
-              return !!waypoint.portal;
-            })
-            .map(function (waypoint) {
-              return L.latLng(waypoint.portal.latE6 / 1e6, waypoint.portal.lngE6 / 1e6);
-            })
-            .map(function (latlng1, i, latlngs) {
-              if (i === 0) return 0;
-              var latlng2 = latlngs[i - 1];
-              return latlng1.distanceTo(latlng2);
-            })
-            .reduce(function (a, b) {
-              return a + b;
-            }, 0);
+        if (!navigator.clipboard || !navigator.clipboard.writeText) {
+          if (msgEl) msgEl.textContent = "error: clipboard API not available";
+          return;
+        }
 
-          if (mission_length > 0) {
-            if (mission_length > 1000) {
-              mission_length = Math.round(mission_length / 100) / 10 + 'km';
-            } else {
-              mission_length = Math.round(mission_length * 10) / 10 + 'm';
-            }
+        navigator.clipboard.writeText(copiedtext).then(
+          function () {
+            if (DEVICE === 'desktop' && msgEl) msgEl.textContent = "done(COPY)";
+          },
+          function (err) {
+            console.log(`fail: ${err}`);
+            if (msgEl) msgEl.textContent = "error: " + err;
           }
-        }
-
-        var copiedtext = "";
-        if (mission_length != "") {
-          copiedtext = "TITLE : " + mission.title + "\nLENGTH : " + len + "\n" + url;
-        } else {
-          copiedtext = "TITLE : " + mission.title + "\n" + url;
-        }
-
-        const responsePromise = await fetch(mission.image);
-        const blob = responsePromise.blob();
-        const textBlob = new Blob([copiedtext], { type: 'text/plain' });
-
-        // const data = [new ClipboardItem({ "image/png": blob , "text/plain": textBlob })];
-        const data = new ClipboardItem({
-          'text/plain': textBlob,
-          'image/png': blob // 画像のMIMEタイプ（例: 'image/png'）
-        });
-
-        navigator.clipboard.write([data]).then(
-          () => { console.log("success " + mission.title); },
-          (msg) => { console.log(`fail: ${msg}`); }
         );
-      }
+      });
+      // ////////////////////////////
+      // // テキストのみ
+      // var copylink = container.appendChild(document.createElement('input'));
+      // copylink.type = "button";
+      // copylink.value = "COPY";
+      // copylink.addEventListener(
+      //   'click',
+      //   function (ev) {
+      //     var url = "https://link.ingress.com/mission/" + mission.guid;
 
-      var copyLinkImageAndText = container.appendChild(document.createElement('input'));
-      copyLinkImageAndText.type = "button";
-      copyLinkImageAndText.value = "copy+";
-      copyLinkImageAndText.addEventListener("click", copyImage);
-      ////////////////////////////
+      //     var copiedtext = "";
+      //     if (typeof len !== 'undefined') {
+      //       copiedtext = "TITLE : " + mission.title + "\nLENGTH : " + len + "\n" + url;
+      //     } else {
+      //       copiedtext = "TITLE : " + mission.title + "\n" + url;
+      //     }
 
-      ////////////////////////////
-      // テキストのみ
-      var copylink = container.appendChild(document.createElement('input'));
-      copylink.type = "button";
-      copylink.value = "copy";
-      copylink.addEventListener(
-        'click',
-        function (ev) {
-          var url = "https://link.ingress.com/mission/" + mission.guid;
-          var mission_length = "";
-          if (cachedMission) {
-
-            mission_length = cachedMission.waypoints
-              .filter(function (waypoint) {
-                return !!waypoint.portal;
-              })
-              .map(function (waypoint) {
-                return L.latLng(waypoint.portal.latE6 / 1e6, waypoint.portal.lngE6 / 1e6);
-              })
-              .map(function (latlng1, i, latlngs) {
-                if (i === 0) return 0;
-                var latlng2 = latlngs[i - 1];
-                return latlng1.distanceTo(latlng2);
-              })
-              .reduce(function (a, b) {
-                return a + b;
-              }, 0);
-
-            if (mission_length > 0) {
-              if (mission_length > 1000) {
-                mission_length = Math.round(mission_length / 100) / 10 + 'km';
-              } else {
-                mission_length = Math.round(mission_length * 10) / 10 + 'm';
-              }
-            }
-
-
-          }
-          // 出力形式を整える
-          // 下記は旧バージョン
-          // v1
-          // copiedtext = mission.title + "\n" + url;
-          // v2 tmp 
-          // var copiedtext = "";
-          // if (mission_length != "") {
-          //   copiedtext = mission.title + "( length : " + len + " )" + "\n" + url;
-          // } else {
-          //   copiedtext = mission.title + "\n" + url;
-          // }
-          // v2
-
-          var copiedtext = "";
-          if (mission_length != "") {
-            copiedtext = "TITLE : " + mission.title + "\nLENGTH : " + len + "\n" + url;
-          } else {
-            copiedtext = "TITLE : " + mission.title + "\n" + url;
-          }
-
-          // コピーボタン
-          navigator.clipboard.writeText(copiedtext).then(
-            () => { console.log("success " + mission.title); },
-            (msg) => { console.log(`fail: ${msg}`); }
-          );
-          // コピーしたのをわかりやすくしたかっただけのやつ。スマホのほうではいらなかったのでいったんコメントアウト
-          // document.getElementById("mission_copy_" + mission.guid).textContent="done"
-
-          // this.openMission(mission.guid);h
-          // // prevent browser from following link
-          ev.preventDefault();
-          // return false;
-        }
-        // false
-      );
+      //     // コピーボタン
+      //     navigator.clipboard.writeText(copiedtext).then(
+      //       () => { /*console.log("success " + mission.title);*/ },
+      //       (msg) => { console.log(`fail: ${msg}`); }
+      //     );
+      //     // コピーしたのをわかりやすくしたかっただけのやつ。スマホのほうではいらなかったのでいったんコメントアウト
+      //     if (DEVICE == 'desktop') {
+      //       document.getElementById("mission_copy_" + mission.guid).textContent = "done(COPY)"
+      //     }
+      //     ev.preventDefault();
+      //   }
+      //   // false
+      // );
       // コピーしたことを出力してるところ
-      // var copymessage = container.appendChild(document.createElement('p'));
-      // copymessage.id = "mission_copy_" + mission.guid;
+      var copymessage = container.appendChild(document.createElement('p'));
+      copymessage.id = "mission_copy_" + mission.guid;
+      // TODO こぴーできるように ここまで
       /////////////////////////////////////////////////////
 
 
@@ -818,7 +799,7 @@ function wrapper(plugin_info) {
 
         if (len > 0) {
           if (len > 1000) {
-            len = Math.round(len / 100) / 10 + 'km';
+            len = Math.round(len / 100) / 10 + 'km' + '(' + Math.round(len * 10) / 10 + 'm' + ')';
           } else {
             len = Math.round(len * 10) / 10 + 'm';
           }
