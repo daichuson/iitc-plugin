@@ -189,6 +189,8 @@ function wrapper(plugin_info) {
     filterDisplayedMissions: [],
     // 絞り込みの入力文字列（ウィンドウを開き直しても残す）
     filterKeyword: '',
+    // ユーザーがミッション一覧モーダルをリサイズしたときの高さ（null=未変更）
+    missionListHeight: null,
 
     missionTypeImages: [
       'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABIAAAASAQMAAABsABwUAAAABlBMVEWN+1Sx+/dsz4yeAAAAAXRSTlMAQObYZgAAAClJREFUCNdjYIACxgcMDOwfGBjYKoAcCyCugOIPEDnGAxAMVnsAlQ8EAEkHCRVXxWK2AAAAAElFTkSuQmCC',
@@ -397,6 +399,10 @@ function wrapper(plugin_info) {
             collision: 'fit',
           });
         }
+        // ユーザーがリサイズしたら、その高さを覚えておく
+        $(window.DIALOGS['dialog-missionsList']).on('dialogresizestop', function () {
+          window.plugin.missions.missionListHeight = $(this).parent().height();
+        });
 
         this.isMissionListCollapsed = false;
       }
@@ -759,6 +765,7 @@ function wrapper(plugin_info) {
     onExpandMissionList: function () {
       window.plugin.missions.isMissionListCollapsed = false;
       window.plugin.missions.collapseFix();
+      window.plugin.missions.resizeMissionList();   // ← 追加
 
       // When showing missions in View and not portal mission list, refresh list now
       if (!window.plugin.missions.isShowingPortalList) {
@@ -767,33 +774,30 @@ function wrapper(plugin_info) {
     },
 
     resizeMissionList: function () {
-      if (!window.plugin.missions.isMissionListCollapsed) {
-        let openDialog = window.DIALOGS['dialog-missionsList'];
+      var me = window.plugin.missions;
+      if (me.isMissionListCollapsed) return;
 
-        if (openDialog) {
-          // Make dialog choose height automatically based on content first
-          // A few lines down we will restrict height to fit the screen
-          $(openDialog).dialog({ height: 'auto' });
+      var openDialog = window.DIALOGS['dialog-missionsList'];
+      if (!openDialog) return;
 
-          // Restrict height of dialog to fit the screen
-          let dialogHeight = $(openDialog).parent().height();
-          let dialogTop = $(openDialog).parent().offset().top;
-          let mapHeight = window.map.getSize().y;
+      var $parent = $(openDialog).parent();
 
-          // 画面下端からはみ出さない高さ（従来と同じ）
-          let maxHeight = mapHeight - dialogTop;
+      // 画面下端からはみ出さない高さ
+      var available = window.map.getSize().y - $parent.offset().top;
 
-          // スマホのときだけ、さらに画面の半分までに制限する
-          if (device() === 'mobile') {
-            maxHeight = Math.min(maxHeight, Math.floor(window.innerHeight / 2));
-          }
+      // ユーザーがリサイズ済み：そのサイズを保持（画面をはみ出す場合だけ縮める）
+      if (me.missionListHeight) {
+        $(openDialog).dialog({
+          height: Math.max(Math.min(me.missionListHeight, available), 100),
+        });
+        return;
+      }
 
-          if (dialogHeight > maxHeight) {
-            $(openDialog).dialog({
-              height: Math.max(maxHeight, 100),
-            });
-          }
-        }
+      // 初期状態：内容に合わせつつ、最大でも画面の半分
+      $(openDialog).dialog({ height: 'auto' });
+      var maxHeight = Math.min(available, Math.floor(window.innerHeight / 2));
+      if ($parent.height() > maxHeight) {
+        $(openDialog).dialog({ height: Math.max(maxHeight, 100) });
       }
     },
 
