@@ -374,6 +374,16 @@ function wrapper(plugin_info) {
           ],
         });
 
+        // スマホのときだけ、画面の上のほうに表示する（MD Listと同じ位置）
+        if (device() === 'mobile') {
+          $(window.DIALOGS['dialog-missionsList']).dialog('option', 'position', {
+            my: 'center top',
+            at: 'center top+50',
+            of: window,
+            collision: 'fit',
+          });
+        }
+
         this.isMissionListCollapsed = false;
       }
 
@@ -540,8 +550,18 @@ function wrapper(plugin_info) {
       var scrollTop = prev ? prev.scrollTop : 0;
 
       $(openDialog).empty().append(wrapper).dialog({ title: caption });
+
+      // スマホのときだけ、ダイアログ全体が画面の半分に収まるようにリストの高さを決める
+      if (device() === 'mobile' && missions.length) {
+        var half = Math.floor(window.innerHeight / 2);
+        // いったんリストを高さ0にして、リスト以外（タイトル・コピー結果欄・ボタン）の高さを測る
+        content.style.maxHeight = '0px';
+        var overhead = $(openDialog).closest('.ui-dialog').outerHeight();
+        content.style.maxHeight = Math.max(half - overhead, 60) + 'px';
+      }
+
       content.scrollTop = scrollTop;
-    },
+   },
 
     // MDウィンドウが開いている場合のみ再描画
     refreshMdMissionDialog: function () {
@@ -579,12 +599,17 @@ function wrapper(plugin_info) {
           let dialogTop = $(openDialog).parent().offset().top;
           let mapHeight = window.map.getSize().y;
 
-          if (dialogTop + dialogHeight > mapHeight) {
-            let newHeight = mapHeight - dialogTop;
-            newHeight = Math.max(newHeight, 100);
+          // 画面下端からはみ出さない高さ（従来と同じ）
+          let maxHeight = mapHeight - dialogTop;
 
+          // スマホのときだけ、さらに画面の半分までに制限する
+          if (device() === 'mobile') {
+            maxHeight = Math.min(maxHeight, Math.floor(window.innerHeight / 2));
+          }
+
+          if (dialogHeight > maxHeight) {
             $(openDialog).dialog({
-              height: newHeight,
+              height: Math.max(maxHeight, 100),
             });
           }
         }
