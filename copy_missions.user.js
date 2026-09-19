@@ -191,6 +191,7 @@ function wrapper(plugin_info) {
     filterKeyword: '',
     // ユーザーがミッション一覧モーダルをリサイズしたときの高さ（null=未変更）
     missionListHeight: null,
+    missionListUserResized: false,
 
     missionTypeImages: [
       'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABIAAAASAQMAAABsABwUAAAABlBMVEWN+1Sx+/dsz4yeAAAAAXRSTlMAQObYZgAAAClJREFUCNdjYIACxgcMDOwfGBjYKoAcCyCugOIPEDnGAxAMVnsAlQ8EAEkHCRVXxWK2AAAAAElFTkSuQmCC',
@@ -323,7 +324,9 @@ function wrapper(plugin_info) {
     },
 
     showMissionListDialog: function (missions, caption, isPortalList) {
+      
       this.isShowingPortalList = isPortalList;
+      var isNew = false;   // ← 追加
       var mdAdded = this.collectMdMissions(missions);
       var allAdded = this.collectAllMissions(missions);
       
@@ -339,6 +342,7 @@ function wrapper(plugin_info) {
           }
         }
       } else {
+        isNew = true;      // ← 追加
         // If dialog is not open, open it
         window.dialog({
           id: 'missionsList',
@@ -405,6 +409,14 @@ function wrapper(plugin_info) {
         });
 
         this.isMissionListCollapsed = false;
+        // リサイズ保存（外寸で保存し、0以下は無視する）
+        $(window.DIALOGS['dialog-missionsList']).on('dialogresizestop', function () {
+          var h = $(this).parent().outerHeight();
+          if (h > 0) {
+            window.plugin.missions.missionListHeight = h;
+            window.plugin.missions.missionListUserResized = true;
+          }
+        });
       }
 
       // Dialog will be open now
@@ -423,6 +435,7 @@ function wrapper(plugin_info) {
       if (allAdded) {
         this.refreshFilterMissionDialog(false);
       }
+      this.resizeMissionList(isNew);   // ← 引数を渡す
     },
 
         // MD yyyy を含むミッションだけに絞り、同名を除外する
@@ -765,7 +778,7 @@ function wrapper(plugin_info) {
     onExpandMissionList: function () {
       window.plugin.missions.isMissionListCollapsed = false;
       window.plugin.missions.collapseFix();
-      window.plugin.missions.resizeMissionList();   // ← 追加
+      window.plugin.missions.resizeMissionList(true);   // ← true（折りたたみで height:auto になるため）
 
       // When showing missions in View and not portal mission list, refresh list now
       if (!window.plugin.missions.isShowingPortalList) {
@@ -773,7 +786,7 @@ function wrapper(plugin_info) {
       }
     },
 
-    resizeMissionList: function () {
+    resizeMissionList: function (force) {
       var me = window.plugin.missions;
       if (me.isMissionListCollapsed) return;
 
@@ -781,19 +794,22 @@ function wrapper(plugin_info) {
       if (!openDialog) return;
 
       var $parent = $(openDialog).parent();
-
-      // 画面下端からはみ出さない高さ
       var available = window.map.getSize().y - $parent.offset().top;
 
-      // ユーザーがリサイズ済み：そのサイズを保持（画面をはみ出す場合だけ縮める）
-      if (me.missionListHeight) {
-        $(openDialog).dialog({
-          height: Math.max(Math.min(me.missionListHeight, available), 100),
-        });
+      if (me.missionListUserResized && me.missionListHeight) {
+        if (force) {
+          // 新規作成・展開直後だけ、保存した高さを適用する
+          $(openDialog).dialog({
+            height: Math.max(Math.min(me.missionListHeight, available), 100),
+          });
+        } else if ($parent.outerHeight() > available && available > 100) {
+          // 通常の再読み込みでは触らない。画面からはみ出しているときだけ縮める
+          $(openDialog).dialog({ height: available });
+        }
         return;
       }
 
-      // 初期状態：内容に合わせつつ、最大でも画面の半分
+      // 未リサイズ：内容に合わせつつ、最大でも画面の半分
       $(openDialog).dialog({ height: 'auto' });
       var maxHeight = Math.min(available, Math.floor(window.innerHeight / 2));
       if ($parent.height() > maxHeight) {
