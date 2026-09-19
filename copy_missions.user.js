@@ -72,8 +72,8 @@ function wrapper(plugin_info) {
     } else if (ua.indexOf('iPad') > 0 || ua.indexOf('Android') > 0) {
       return 'tablet';
     } else {
-      return 'desktop';
-    }
+    return 'desktop';
+  }
   }
 
   window.onload = function () {
@@ -183,6 +183,12 @@ function wrapper(plugin_info) {
     mdMissions: {},
     // MDウィンドウに現在表示しているミッション（一括コピー用）
     mdDisplayedMissions: [],
+    // 絞り込みリスト用：これまでに一覧に表示したミッション全部（累積）
+    allMissions: {},
+    // 絞り込みウィンドウに現在表示しているミッション（一括コピー用）
+    filterDisplayedMissions: [],
+    // 絞り込みの入力文字列（ウィンドウを開き直しても残す）
+    filterKeyword: '',
 
     missionTypeImages: [
       'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABIAAAASAQMAAABsABwUAAAABlBMVEWN+1Sx+/dsz4yeAAAAAXRSTlMAQObYZgAAAClJREFUCNdjYIACxgcMDOwfGBjYKoAcCyCugOIPEDnGAxAMVnsAlQ8EAEkHCRVXxWK2AAAAAElFTkSuQmCC',
@@ -317,6 +323,7 @@ function wrapper(plugin_info) {
     showMissionListDialog: function (missions, caption, isPortalList) {
       this.isShowingPortalList = isPortalList;
       var mdAdded = this.collectMdMissions(missions);
+      var allAdded = this.collectAllMissions(missions);
       
       // Check whether dialog is already open
       let openDialog = window.DIALOGS['dialog-missionsList'];
@@ -371,11 +378,18 @@ function wrapper(plugin_info) {
                 window.plugin.missions.showMdMissionDialog();
               },
             },
+            {
+              text: 'Filter List',
+              css: { float: 'left', 'margin-right': '2px' },
+              click: function () {
+                window.plugin.missions.showFilterMissionDialog();
+              },
+            },
           ],
         });
 
         // スマホのときだけ、画面の上のほうに表示する（MD Listと同じ位置）
-        if (device() === 'mobile') {
+        if (DEVICE === 'mobile' || DEVICE === 'tablet') {
           $(window.DIALOGS['dialog-missionsList']).dialog('option', 'position', {
             my: 'center top',
             at: 'center top+50',
@@ -399,7 +413,11 @@ function wrapper(plugin_info) {
       this.resizeMissionList();
       if (mdAdded) {
         this.refreshMdMissionDialog();
-      }    },
+      }
+      if (allAdded) {
+        this.refreshFilterMissionDialog(false);
+      }
+    },
 
         // MD yyyy を含むミッションだけに絞り、同名を除外する
     filterMdMissions: function (missions) {
@@ -552,7 +570,7 @@ function wrapper(plugin_info) {
       $(openDialog).empty().append(wrapper).dialog({ title: caption });
 
       // スマホのときだけ、ダイアログ全体が画面の半分に収まるようにリストの高さを決める
-      if (device() === 'mobile' && missions.length) {
+      if ((DEVICE === 'mobile' || DEVICE === 'tablet') && missions.length) {
         var half = Math.floor(window.innerHeight / 2);
         // いったんリストを高さ0にして、リスト以外（タイトル・コピー結果欄・ボタン）の高さを測る
         content.style.maxHeight = '0px';
@@ -563,6 +581,169 @@ function wrapper(plugin_info) {
       content.scrollTop = scrollTop;
    },
 
+       // 一覧に出たミッションを全部、累積データに追加する（追加件数を返す）
+    collectAllMissions: function (missions) {
+      var self = this;
+      var added = 0;
+      (missions || []).forEach(function (m) {
+        if (!m || !m.guid || self.allMissions[m.guid]) return;
+        self.allMissions[m.guid] = m;
+        added++;
+      });
+      return added;
+    },
+
+    // 全角半角・大文字小文字の違いを吸収する
+    normalizeText: function (s) {
+      return String(s || '').normalize('NFKC').toLowerCase();
+    },
+
+    // スペース区切りのキーワードをすべて含むタイトルだけに絞り込む（AND）
+    filterMissionsByKeyword: function (missions, keyword) {
+      var self = this;
+      var terms = self.normalizeText(keyword).split(/\s+/).filter(Boolean);
+      return missions.filter(function (m) {
+        var title = self.normalizeText(m.title);
+        return terms.every(function (term) {
+          return title.indexOf(term) !== -1;
+        });
+      });
+    },
+
+    showFilterMissionDialog: function () {
+      var self = this;
+      var openDialog = window.DIALOGS['dialog-missionsListFilter'];
+
+      if (!openDialog) {
+        var topPosition = { my: 'center top', at: 'center top+50', of: window, collision: 'fit' };
+
+        window.dialog({
+          id: 'missionsListFilter',
+          html: '',
+          height: 'auto',
+          width: '400px',
+          title: 'Filter List',
+          position: topPosition,
+          buttons: [
+            {
+              text: 'Clear',
+              css: { float: 'left', 'margin-right': '2px' },
+              click: function () {
+                window.plugin.missions.allMissions = {};
+                window.plugin.missions.refreshFilterMissionDialog(true);
+              },
+            },
+            {
+              text: 'Copy all',
+              css: { float: 'left', 'margin-right': '2px' },
+              click: function () {
+                var me = window.plugin.missions;
+                var list = me.filterDisplayedMissions || [];
+                var statusEl = document.getElementById('mission_filter_status');
+
+                if (!list.length) {
+                  if (statusEl) statusEl.textContent = 'コピー対象がありません';
+                  return;
+                }
+                if (!navigator.clipboard || !navigator.clipboard.writeText) {
+                  if (statusEl) statusEl.textContent = 'error: clipboard API not available';
+                  return;
+                }
+
+                var text = list
+                  .map(function (m) {
+                    return me.getMissionCopyText(m);
+                  })
+                  .join('\n \n');
+
+                navigator.clipboard.writeText(text).then(
+                  function () {
+                    if (statusEl) statusEl.textContent = 'done(COPY ALL: ' + list.length + ')';
+                  },
+                  function (err) {
+                    console.log('fail: ' + err);
+                    if (statusEl) statusEl.textContent = 'error: ' + err;
+                  }
+                );
+              },
+            },
+            {
+              text: 'Ok',
+              click: function () {
+                $(this).dialog('close');
+              },
+            },
+          ],
+        });
+        openDialog = window.DIALOGS['dialog-missionsListFilter'];
+        $(openDialog).dialog('option', 'position', topPosition);
+
+        // 入力欄・コピー結果欄・リスト欄は最初に一度だけ作る（再描画で入力欄が消えないように）
+        var box = document.createElement('div');
+
+        var input = box.appendChild(document.createElement('input'));
+        input.type = 'text';
+        input.id = 'mission_filter_input';
+        input.placeholder = 'ミッション名で絞り込み（スペース区切りでAND）';
+        input.value = self.filterKeyword;
+        input.style.cssText = 'width:100%; box-sizing:border-box; margin-bottom:4px;';
+        input.addEventListener('input', function () {
+          self.filterKeyword = input.value;
+          self.refreshFilterMissionDialog(true);
+        });
+
+        var status = box.appendChild(document.createElement('p'));
+        status.id = 'mission_filter_status';
+
+        var listBox = box.appendChild(document.createElement('div'));
+        listBox.className = 'plugin-mission-filter-list';
+        listBox.style.overflowY = 'auto';
+
+        $(openDialog).empty().append(box);
+      }
+
+      this.refreshFilterMissionDialog(true);
+    },
+
+    // 絞り込みウィンドウのリスト部分だけを再描画する（開いている場合のみ）
+    refreshFilterMissionDialog: function (resetScroll) {
+      var openDialog = window.DIALOGS['dialog-missionsListFilter'];
+      if (!openDialog) return;
+
+      var self = this;
+      var all = Object.keys(this.allMissions).map(function (guid) {
+        return self.allMissions[guid];
+      });
+      var missions = this.filterMissionsByKeyword(all, this.filterKeyword);
+      missions.sort(function (a, b) {
+        return (a.title || '').localeCompare(b.title || '', 'ja', { numeric: true });
+      });
+      this.filterDisplayedMissions = missions;
+
+      var listBox = $(openDialog).find('.plugin-mission-filter-list')[0];
+      if (!listBox) return;
+      var scrollTop = resetScroll ? 0 : listBox.scrollTop;
+
+      $(listBox).empty();
+      if (missions.length) {
+        listBox.appendChild(this.renderMissionList(missions, true)); // true: 並び順を維持
+      } else {
+        listBox.textContent = '該当するミッションがありません';
+      }
+
+      $(openDialog).dialog({ title: 'Filter List (' + missions.length + '/' + all.length + ')' });
+
+      // PCは画面の6割まで。スマホはダイアログ全体が画面の半分に収まるようにする
+      listBox.style.maxHeight = '60vh';
+      if ((DEVICE === 'mobile' || DEVICE === 'tablet') && missions.length) {
+        listBox.style.maxHeight = '0px';
+        var overhead = $(openDialog).closest('.ui-dialog').outerHeight();
+        listBox.style.maxHeight = Math.max(Math.floor(window.innerHeight / 2) - overhead, 60) + 'px';
+      }
+
+      listBox.scrollTop = scrollTop;
+    },
+    
     // MDウィンドウが開いている場合のみ再描画
     refreshMdMissionDialog: function () {
       if (window.DIALOGS['dialog-missionsListMD']) {
@@ -945,6 +1126,26 @@ function wrapper(plugin_info) {
           }
         );
       });
+
+      // スマホのときだけ、Ingress でミッションを開く「OPEN」ボタンを COPY の隣に出す
+      if (DEVICE === 'mobile' || DEVICE === 'tablet') {
+        var openBtn = container.appendChild(document.createElement('input'));
+        openBtn.type = 'button';
+        openBtn.value = 'OPEN';
+        openBtn.addEventListener('click', function (ev) {
+          ev.preventDefault();
+
+          // 一時的なリンクを作ってクリックし、OSにURLの処理（アプリ起動）を任せる
+          var a = document.createElement('a');
+          a.href = 'https://link.ingress.com/mission/' + mission.guid;
+          a.target = '_blank';
+          a.rel = 'noopener';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        });
+      }
+
       // ////////////////////////////
       // // テキストのみ
       // var copylink = container.appendChild(document.createElement('input'));
