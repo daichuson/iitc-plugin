@@ -1,21 +1,18 @@
 // ==UserScript==
-// @author         dai02
-// @name           IITC plugin: Missions copy mission
+// @author         jonatkins
+// @name           IITC plugin: Missions
 // @category       Info
-// @version        0.3.5-1
+// @version        0.3.6
 // @description    View missions. Marking progress on waypoints/missions basis. Showing mission paths on the map.
 // @id             missions
+// @namespace      https://github.com/IITC-CE/ingress-intel-total-conversion
+// @updateURL      https://iitc.app/build/release/plugins/missions.meta.js
+// @downloadURL    https://iitc.app/build/release/plugins/missions.user.js
 // @match          https://intel.ingress.com/*
 // @match          https://intel-x.ingress.com/*
-// @match          https://*.ingress.com/intel*
-// @match          http://*.ingress.com/intel*
-// @match          https://intel.ingress.com/
-// @match          http://intel.ingress.com/
-// @match          https://*.ingress.com/mission/*
-// @match          http://*.ingress.com/mission/*
+// @icon           https://iitc.app/extras/plugin-icons/missions.svg
 // @grant          none
 // ==/UserScript==
-
 
 function wrapper(plugin_info) {
   // ensure plugin framework is there, even if iitc is not yet loaded
@@ -24,7 +21,7 @@ function wrapper(plugin_info) {
   //PLUGIN AUTHORS: writing a plugin outside of the IITC build environment? if so, delete these lines!!
   //(leaving them in place might break the 'About IITC' page or break update checks)
   plugin_info.buildName = 'release';
-  plugin_info.dateTimeVersion = '2025-08-29-160722';
+  plugin_info.dateTimeVersion = '2026-05-18-134158';
   plugin_info.pluginId = 'missions';
   //END PLUGIN AUTHORS NOTE
 
@@ -32,6 +29,7 @@ function wrapper(plugin_info) {
   /* global IITC, L -- eslint */
 
   var changelog = [
+    { version: '0.3.6', changes: ['Refactoring: update Leaflet API usage'] },
     {
       version: '0.3.5',
       changes: ['Fix mission link missing from sidebar'],
@@ -64,36 +62,6 @@ function wrapper(plugin_info) {
     Portal: 1,
     FieldTrip: 2,
   };
-
-  ////////////////////////////////////////////////////////////////////////////////////////////
-  // useragent からdevice情報取得
-  var DEVICE = "";
-  function device() {
-    const ua = navigator.userAgent;
-    const mq = function (q) {
-      return !!(window.matchMedia && window.matchMedia(q).matches);
-    };
-
-    // 1. UA-CH（Chrome系）
-    if (navigator.userAgentData && navigator.userAgentData.mobile) return 'mobile';
-
-    // 2. 従来のUA判定
-    if (/iPhone|iPod|iPad|Android/i.test(ua)) return 'mobile';
-
-    // 3. iPadOS（UAがMacintoshになる）
-    if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) return 'mobile';
-
-    // 4. 主入力がタッチでホバー不可（PC版サイト表示のAndroidなど）
-    if (mq('(pointer: coarse)') && mq('(hover: none)')) return 'mobile';
-
-    return 'desktop';
-  }
-
-  window.onload = function () {
-    DEVICE = device();
-    console.log(DEVICE);
-  }
-  ////////////////////////////////////////////////////////////////////////////////////////////
 
   var decodeWaypoint = function (data) {
     var result = {
@@ -186,38 +154,6 @@ function wrapper(plugin_info) {
 
     SYNC_DELAY: 5000,
     enableSync: false,
-
-    ////////////////////////////////////////////////////////////////////////////////////////////
-    // 変数追加
-    // 「MD 2024」「MD2024」のような表記にマッチ（前後が英字/数字でないこと）
-    MD_REGEX: /(^|[^A-Za-z])MD\s?\d{4}(?!\d)/i,
-    // スマホのときだけ、モーダルを画面の上のほうに表示する
-    isMobile: function () {
-      return DEVICE === 'mobile' || DEVICE === 'tablet';
-    },
-
-    // 上端から50pxほど下げて、IITCのヘッダーと重ならないようにする
-    getTopPosition: function () {
-      return { my: 'center top', at: 'center top+50', of: window, collision: 'fit' };
-    },
-    // false: 同名は1件にまとめて表示 / true: 同名が2件以上あるタイトルは全部除外
-    excludeAllDuplicates: false,
-
-    // 直近で一覧に表示したミッション（MDウィンドウの元データ）
-    mdMissions: {},
-    // MDウィンドウに現在表示しているミッション（一括コピー用）
-    mdDisplayedMissions: [],
-    // 絞り込みリスト用：これまでに一覧に表示したミッション全部（累積）
-    allMissions: {},
-    // 絞り込みウィンドウに現在表示しているミッション（一括コピー用）
-    filterDisplayedMissions: [],
-    // 絞り込みの入力文字列（ウィンドウを開き直しても残す）
-    filterKeyword: '',
-    // ユーザーがミッション一覧モーダルをリサイズしたときの高さ（null=未変更）
-    missionListHeight: null,
-    missionListUserResized: false,
-    // 変数追加　ここまで
-    ////////////////////////////////////////////////////////////////////////////////////////////
 
     missionTypeImages: [
       'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABIAAAASAQMAAABsABwUAAAABlBMVEWN+1Sx+/dsz4yeAAAAAXRSTlMAQObYZgAAAClJREFUCNdjYIACxgcMDOwfGBjYKoAcCyCugOIPEDnGAxAMVnsAlQ8EAEkHCRVXxWK2AAAAAElFTkSuQmCC',
@@ -322,7 +258,7 @@ function wrapper(plugin_info) {
           window.show('plugin-missions');
         }
       } else {
-        var dlg = window
+        window
           .dialog({
             id: 'plugin-mission-details-' + id,
             title: mission.title,
@@ -346,22 +282,11 @@ function wrapper(plugin_info) {
               $(this).dialog('close');
             },
           });
-
-        /////////////////////////////////////////////////////////////////////
-        // スマホのときだけ、画面の上のほうに表示する
-        if (this.isMobile()) {
-          dlg.dialog('option', 'position', this.getTopPosition());
-        }
-        /////////////////////////////////////////////////////////////////////
       }
     },
 
     showMissionListDialog: function (missions, caption, isPortalList) {
-
       this.isShowingPortalList = isPortalList;
-      var isNew = false;   // ← 追加
-      var mdAdded = this.collectMdMissions(missions);
-      var allAdded = this.collectAllMissions(missions);
 
       // Check whether dialog is already open
       let openDialog = window.DIALOGS['dialog-missionsList'];
@@ -375,7 +300,6 @@ function wrapper(plugin_info) {
           }
         }
       } else {
-        isNew = true;      // ← 追加
         // If dialog is not open, open it
         window.dialog({
           id: 'missionsList',
@@ -410,46 +334,10 @@ function wrapper(plugin_info) {
                 window.plugin.missions.fromPortalListToNormalListButton = this;
               },
             },
-            {
-              text: 'MD List',
-              css: { float: 'left', 'margin-right': '2px' },
-              click: function () {
-                window.plugin.missions.showMdMissionDialog();
-              },
-            },
-            {
-              text: 'Filter List',
-              css: { float: 'left', 'margin-right': '2px' },
-              click: function () {
-                window.plugin.missions.showFilterMissionDialog();
-              },
-            },
           ],
         });
 
-        // スマホのときだけ、画面の上のほうに表示する（MD Listと同じ位置）
-        if (DEVICE === 'mobile' || DEVICE === 'tablet') {
-          $(window.DIALOGS['dialog-missionsList']).dialog('option', 'position', {
-            my: 'center top',
-            at: 'center top+50',
-            of: window,
-            collision: 'fit',
-          });
-        }
-        // ユーザーがリサイズしたら、その高さを覚えておく
-        $(window.DIALOGS['dialog-missionsList']).on('dialogresizestop', function () {
-          window.plugin.missions.missionListHeight = $(this).parent().height();
-        });
-
         this.isMissionListCollapsed = false;
-        // リサイズ保存（外寸で保存し、0以下は無視する）
-        $(window.DIALOGS['dialog-missionsList']).on('dialogresizestop', function () {
-          var h = $(this).parent().outerHeight();
-          if (h > 0) {
-            window.plugin.missions.missionListHeight = h;
-            window.plugin.missions.missionListUserResized = true;
-          }
-        });
       }
 
       // Dialog will be open now
@@ -462,345 +350,6 @@ function wrapper(plugin_info) {
       $(window.plugin.missions.fromPortalListToNormalListButton)[isPortalList ? 'show' : 'hide']();
 
       this.resizeMissionList();
-      if (mdAdded) {
-        this.refreshMdMissionDialog();
-      }
-      if (allAdded) {
-        this.refreshFilterMissionDialog(false);
-      }
-      this.resizeMissionList(isNew);   // ← 引数を渡す
-    },
-
-    // MD yyyy を含むミッションだけに絞り、同名を除外する
-    filterMdMissions: function (missions) {
-      var self = this;
-      var targets = missions.filter(function (m) {
-        return self.MD_REGEX.test(m.title || '');
-      });
-
-      var count = {};
-      targets.forEach(function (m) {
-        var key = m.title.trim();
-        count[key] = (count[key] || 0) + 1;
-      });
-
-      if (this.excludeAllDuplicates) {
-        // 同名が1件だけのものだけ残す
-        return targets.filter(function (m) {
-          return count[m.title.trim()] === 1;
-        });
-      }
-
-      // 同名は最初の1件だけ残す
-      var seen = {};
-      return targets.filter(function (m) {
-        var key = m.title.trim();
-        if (seen[key]) return false;
-        seen[key] = true;
-        return true;
-      });
-    },
-
-    // 一覧のミッションからMD該当のものを累積データに追加する（追加件数を返す）
-    collectMdMissions: function (missions) {
-      var self = this;
-      var added = 0;
-      (missions || []).forEach(function (m) {
-        if (!m || !m.guid || !self.MD_REGEX.test(m.title || '')) return;
-        if (self.mdMissions[m.guid]) return;
-        self.mdMissions[m.guid] = m;
-        added++;
-      });
-      return added;
-    },
-
-    showMdMissionDialog: function () {
-      // 累積データから、同名を除いたリストを作り、五十音順に並べる
-      var missions = this.filterMdMissions(
-        Object.keys(this.mdMissions).map(function (guid) {
-          return window.plugin.missions.mdMissions[guid];
-        })
-      );
-      missions.sort(function (a, b) {
-        return a.title.localeCompare(b.title, 'ja', { numeric: true });
-      });
-      this.mdDisplayedMissions = missions;
-
-      var caption = 'MD List (' + missions.length + ')';
-
-      var wrapper = document.createElement('div');
-
-      // コピー結果の表示欄
-      var status = wrapper.appendChild(document.createElement('p'));
-      status.id = 'mission_md_status';
-
-      var content;
-      if (missions.length) {
-        content = this.renderMissionList(missions, true); // true: 並び順を維持
-        content.style.maxHeight = '60vh';
-        content.style.overflowY = 'auto';
-      } else {
-        content = document.createElement('div');
-        content.textContent = '該当するミッションがありません';
-      }
-      content.className = 'plugin-mission-md-list';
-      wrapper.appendChild(content);
-
-      var openDialog = window.DIALOGS['dialog-missionsListMD'];
-      if (!openDialog) {
-        // 画面の上部中央から表示する（上端から50pxほど下げて、IITCのヘッダーと重ならないようにする）
-        var topPosition = { my: 'center top', at: 'center top+50', of: window, collision: 'fit' };
-
-        window.dialog({
-          id: 'missionsListMD',
-          html: '',
-          height: 'auto',
-          width: '400px',
-          title: caption,
-          position: topPosition,   // ← 追加
-          buttons: [
-            {
-              text: 'Clear',
-              css: { float: 'left', 'margin-right': '2px' },
-              click: function () {
-                window.plugin.missions.mdMissions = {};
-                window.plugin.missions.showMdMissionDialog();
-              },
-            },
-            {
-              text: 'Copy all',
-              css: { float: 'left', 'margin-right': '2px' },
-              click: function () {
-                var self = window.plugin.missions;
-                var list = self.mdDisplayedMissions || [];
-                var statusEl = document.getElementById('mission_md_status');
-
-                if (!list.length) {
-                  if (statusEl) statusEl.textContent = 'コピー対象がありません';
-                  return;
-                }
-                if (!navigator.clipboard || !navigator.clipboard.writeText) {
-                  if (statusEl) statusEl.textContent = 'error: clipboard API not available';
-                  return;
-                }
-
-                var text = list
-                  .map(function (m) {
-                    return self.getMissionCopyText(m);
-                  })
-                  .join('\n \n');
-
-                navigator.clipboard.writeText(text).then(
-                  function () {
-                    if (statusEl) statusEl.textContent = 'done(COPY ALL: ' + list.length + ')';
-                  },
-                  function (err) {
-                    console.log('fail: ' + err);
-                    if (statusEl) statusEl.textContent = 'error: ' + err;
-                  }
-                );
-              },
-            },
-            {
-              text: 'Ok',
-              click: function () {
-                $(this).dialog('close');
-              },
-            },
-          ],
-        });
-        openDialog = window.DIALOGS['dialog-missionsListMD'];
-
-        // ← 追加: 作成時の指定が効かなかった場合に備えて、もう一度位置を設定する
-        $(openDialog).dialog('option', 'position', topPosition);
-      }
-
-      // 再描画してもスクロール位置が飛ばないようにする
-      var prev = $(openDialog).find('.plugin-mission-md-list')[0];
-      var scrollTop = prev ? prev.scrollTop : 0;
-
-      $(openDialog).empty().append(wrapper).dialog({ title: caption });
-
-      // スマホのときだけ、ダイアログ全体が画面の半分に収まるようにリストの高さを決める
-      if ((DEVICE === 'mobile' || DEVICE === 'tablet') && missions.length) {
-        var half = Math.floor(window.innerHeight / 2);
-        // いったんリストを高さ0にして、リスト以外（タイトル・コピー結果欄・ボタン）の高さを測る
-        content.style.maxHeight = '0px';
-        var overhead = $(openDialog).closest('.ui-dialog').outerHeight();
-        content.style.maxHeight = Math.max(half - overhead, 60) + 'px';
-      }
-
-      content.scrollTop = scrollTop;
-    },
-
-    // 一覧に出たミッションを全部、累積データに追加する（追加件数を返す）
-    collectAllMissions: function (missions) {
-      var self = this;
-      var added = 0;
-      (missions || []).forEach(function (m) {
-        if (!m || !m.guid || self.allMissions[m.guid]) return;
-        self.allMissions[m.guid] = m;
-        added++;
-      });
-      return added;
-    },
-
-    // 全角半角・大文字小文字の違いを吸収する
-    normalizeText: function (s) {
-      return String(s || '').normalize('NFKC').toLowerCase();
-    },
-
-    // スペース区切りのキーワードをすべて含むタイトルだけに絞り込む（AND）
-    filterMissionsByKeyword: function (missions, keyword) {
-      var self = this;
-      var terms = self.normalizeText(keyword).split(/\s+/).filter(Boolean);
-      return missions.filter(function (m) {
-        var title = self.normalizeText(m.title);
-        return terms.every(function (term) {
-          return title.indexOf(term) !== -1;
-        });
-      });
-    },
-
-    showFilterMissionDialog: function () {
-      var self = this;
-      var openDialog = window.DIALOGS['dialog-missionsListFilter'];
-
-      if (!openDialog) {
-        var topPosition = { my: 'center top', at: 'center top+50', of: window, collision: 'fit' };
-
-        window.dialog({
-          id: 'missionsListFilter',
-          html: '',
-          height: 'auto',
-          width: '400px',
-          title: 'Filter List',
-          position: topPosition,
-          buttons: [
-            {
-              text: 'Clear',
-              css: { float: 'left', 'margin-right': '2px' },
-              click: function () {
-                window.plugin.missions.allMissions = {};
-                window.plugin.missions.refreshFilterMissionDialog(true);
-              },
-            },
-            {
-              text: 'Copy all',
-              css: { float: 'left', 'margin-right': '2px' },
-              click: function () {
-                var me = window.plugin.missions;
-                var list = me.filterDisplayedMissions || [];
-                var statusEl = document.getElementById('mission_filter_status');
-
-                if (!list.length) {
-                  if (statusEl) statusEl.textContent = 'コピー対象がありません';
-                  return;
-                }
-                if (!navigator.clipboard || !navigator.clipboard.writeText) {
-                  if (statusEl) statusEl.textContent = 'error: clipboard API not available';
-                  return;
-                }
-
-                var text = list
-                  .map(function (m) {
-                    return me.getMissionCopyText(m);
-                  })
-                  .join('\n \n');
-
-                navigator.clipboard.writeText(text).then(
-                  function () {
-                    if (statusEl) statusEl.textContent = 'done(COPY ALL: ' + list.length + ')';
-                  },
-                  function (err) {
-                    console.log('fail: ' + err);
-                    if (statusEl) statusEl.textContent = 'error: ' + err;
-                  }
-                );
-              },
-            },
-            {
-              text: 'Ok',
-              click: function () {
-                $(this).dialog('close');
-              },
-            },
-          ],
-        });
-        openDialog = window.DIALOGS['dialog-missionsListFilter'];
-        $(openDialog).dialog('option', 'position', topPosition);
-
-        // 入力欄・コピー結果欄・リスト欄は最初に一度だけ作る（再描画で入力欄が消えないように）
-        var box = document.createElement('div');
-
-        var input = box.appendChild(document.createElement('input'));
-        input.type = 'text';
-        input.id = 'mission_filter_input';
-        input.placeholder = 'ミッション名で絞り込み（スペース区切りでAND）';
-        input.value = self.filterKeyword;
-        input.style.cssText = 'width:100%; box-sizing:border-box; margin-bottom:4px;';
-        input.addEventListener('input', function () {
-          self.filterKeyword = input.value;
-          self.refreshFilterMissionDialog(true);
-        });
-
-        var status = box.appendChild(document.createElement('p'));
-        status.id = 'mission_filter_status';
-
-        var listBox = box.appendChild(document.createElement('div'));
-        listBox.className = 'plugin-mission-filter-list';
-        listBox.style.overflowY = 'auto';
-
-        $(openDialog).empty().append(box);
-      }
-
-      this.refreshFilterMissionDialog(true);
-    },
-
-    // 絞り込みウィンドウのリスト部分だけを再描画する（開いている場合のみ）
-    refreshFilterMissionDialog: function (resetScroll) {
-      var openDialog = window.DIALOGS['dialog-missionsListFilter'];
-      if (!openDialog) return;
-
-      var self = this;
-      var all = Object.keys(this.allMissions).map(function (guid) {
-        return self.allMissions[guid];
-      });
-      var missions = this.filterMissionsByKeyword(all, this.filterKeyword);
-      missions.sort(function (a, b) {
-        return (a.title || '').localeCompare(b.title || '', 'ja', { numeric: true });
-      });
-      this.filterDisplayedMissions = missions;
-
-      var listBox = $(openDialog).find('.plugin-mission-filter-list')[0];
-      if (!listBox) return;
-      var scrollTop = resetScroll ? 0 : listBox.scrollTop;
-
-      $(listBox).empty();
-      if (missions.length) {
-        listBox.appendChild(this.renderMissionList(missions, true)); // true: 並び順を維持
-      } else {
-        listBox.textContent = '該当するミッションがありません';
-      }
-
-      $(openDialog).dialog({ title: 'Filter List (' + missions.length + '/' + all.length + ')' });
-
-      // PCは画面の6割まで。スマホはダイアログ全体が画面の半分に収まるようにする
-      listBox.style.maxHeight = '60vh';
-      if ((DEVICE === 'mobile' || DEVICE === 'tablet') && missions.length) {
-        listBox.style.maxHeight = '0px';
-        var overhead = $(openDialog).closest('.ui-dialog').outerHeight();
-        listBox.style.maxHeight = Math.max(Math.floor(window.innerHeight / 2) - overhead, 60) + 'px';
-      }
-
-      listBox.scrollTop = scrollTop;
-    },
-
-    // MDウィンドウが開いている場合のみ再描画
-    refreshMdMissionDialog: function () {
-      if (window.DIALOGS['dialog-missionsListMD']) {
-        this.showMdMissionDialog();
-      }
     },
 
     onCollapseMissionList: function () {
@@ -811,7 +360,6 @@ function wrapper(plugin_info) {
     onExpandMissionList: function () {
       window.plugin.missions.isMissionListCollapsed = false;
       window.plugin.missions.collapseFix();
-      window.plugin.missions.resizeMissionList(true);   // ← true（折りたたみで height:auto になるため）
 
       // When showing missions in View and not portal mission list, refresh list now
       if (!window.plugin.missions.isShowingPortalList) {
@@ -819,34 +367,29 @@ function wrapper(plugin_info) {
       }
     },
 
-    resizeMissionList: function (force) {
-      var me = window.plugin.missions;
-      if (me.isMissionListCollapsed) return;
+    resizeMissionList: function () {
+      if (!window.plugin.missions.isMissionListCollapsed) {
+        let openDialog = window.DIALOGS['dialog-missionsList'];
 
-      var openDialog = window.DIALOGS['dialog-missionsList'];
-      if (!openDialog) return;
+        if (openDialog) {
+          // Make dialog choose height automatically based on content first
+          // A few lines down we will restrict height to fit the screen
+          $(openDialog).dialog({ height: 'auto' });
 
-      var $parent = $(openDialog).parent();
-      var available = window.map.getSize().y - $parent.offset().top;
+          // Restrict height of dialog to fit the screen
+          let dialogHeight = $(openDialog).parent().height();
+          let dialogTop = $(openDialog).parent().offset().top;
+          let mapHeight = window.map.getSize().y;
 
-      if (me.missionListUserResized && me.missionListHeight) {
-        if (force) {
-          // 新規作成・展開直後だけ、保存した高さを適用する
-          $(openDialog).dialog({
-            height: Math.max(Math.min(me.missionListHeight, available), 100),
-          });
-        } else if ($parent.outerHeight() > available && available > 100) {
-          // 通常の再読み込みでは触らない。画面からはみ出しているときだけ縮める
-          $(openDialog).dialog({ height: available });
+          if (dialogTop + dialogHeight > mapHeight) {
+            let newHeight = mapHeight - dialogTop;
+            newHeight = Math.max(newHeight, 100);
+
+            $(openDialog).dialog({
+              height: newHeight,
+            });
+          }
         }
-        return;
-      }
-
-      // 未リサイズ：内容に合わせつつ、最大でも画面の半分
-      $(openDialog).dialog({ height: 'auto' });
-      var maxHeight = Math.min(available, Math.floor(window.innerHeight / 2));
-      if ($parent.height() > maxHeight) {
-        $(openDialog).dialog({ height: Math.max(maxHeight, 100) });
       }
     },
 
@@ -869,7 +412,7 @@ function wrapper(plugin_info) {
           return [waypoint.portal.latE6 / 1e6, waypoint.portal.lngE6 / 1e6];
         });
 
-      return L.latLngBounds(latlngs);
+      return new L.LatLngBounds(latlngs);
     },
 
     loadMissionsInBounds: function (bounds, callback, errorcallback) {
@@ -982,7 +525,7 @@ function wrapper(plugin_info) {
       );
     },
 
-    renderMissionList: function (missions, keepOrder) {
+    renderMissionList: function (missions) {
       var container = document.createElement('div');
 
       // Sort by name
@@ -996,49 +539,12 @@ function wrapper(plugin_info) {
         return 0;
       }
 
-      if (!keepOrder) {
-        missions.sort(compare);
-      }
+      missions.sort(compare);
 
       missions.forEach(function (mission) {
         container.appendChild(this.renderMissionSummary(mission));
       }, this);
       return container;
-    },
-    // COPYボタンと同じ形式のコピー用テキストを返す
-    getMissionCopyText: function (mission) {
-      var url = 'https://link.ingress.com/mission/' + mission.guid;
-      var cached = this.getMissionCache(mission.guid);
-
-      // キャッシュが無い場合は LENGTH 行なし（COPYボタンと同じ）
-      if (!cached) {
-        return 'TITLE : ' + mission.title + '\n' + url;
-      }
-
-      var len = cached.waypoints
-        .filter(function (waypoint) {
-          return !!waypoint.portal;
-        })
-        .map(function (waypoint) {
-          return L.latLng(waypoint.portal.latE6 / 1e6, waypoint.portal.lngE6 / 1e6);
-        })
-        .map(function (latlng1, i, latlngs) {
-          if (i === 0) return 0;
-          return latlng1.distanceTo(latlngs[i - 1]);
-        })
-        .reduce(function (a, b) {
-          return a + b;
-        }, 0);
-
-      if (len > 0) {
-        if (len > 1000) {
-          len = Math.round(len / 100) / 10 + 'km' + '(' + Math.round(len * 10) / 10 + 'm' + ')';
-        } else {
-          len = Math.round(len * 10) / 10 + 'm';
-        }
-      }
-
-      return 'TITLE : ' + mission.title + '\nLENGTH : ' + len + '\n' + url;
     },
 
     renderMissionSummary: function (mission) {
@@ -1077,168 +583,8 @@ function wrapper(plugin_info) {
         false
       );
 
-      /////////////////////////////////////////////////////
-      // TODO こぴーできるように
-
-      ////////////////////////////////////////
-      // image
-      DEVICE = device();
-
-      console.log("DEVICE : " + DEVICE);
-      // if (DEVICE == 'desktop') {
-      //   const copyImageMissionImage = async () => {
-      //     ///////////////////////////
-      //     // 画像とテキストを一緒にコピーするやつ
-      //     const responsePromise = await fetch(mission.image);
-      //     const blob = responsePromise.blob();
-      //     const textBlob = new Blob([mission.image], { type: 'text/plain' });
-
-      //     const data = new ClipboardItem({
-      //       'text/plain': textBlob,
-      //       'image/png': blob // 画像のMIMEタイプ（例: 'image/png'）
-      //     });
-      //     navigator.clipboard.write([data]).then(
-      //       () => { /*console.log("success " + mission.title);*/ },
-      //       (msg) => { console.log(`fail: ${msg}`); }
-      //     );
-      //     ///////////////////
-      //   }
-
-      //   var copyLinkMissionImage = container.appendChild(document.createElement('input'));
-      //   copyLinkMissionImage.type = "button";
-      //   copyLinkMissionImage.value = "CopyIMG URL(PC)";
-      //   copyLinkMissionImage.addEventListener("click", copyImageMissionImage);
-
-      // } else {
-
-      // }
-
-      /////////////////////////////////////////
-      if (DEVICE === 'desktop') {
-        const copyImage = async () => {
-          var url = "https://link.ingress.com/mission/" + mission.guid;
-          var copiedtext = (typeof len !== 'undefined')
-            ? "TITLE : " + mission.title + "\nLENGTH : " + len + "\n" + url
-            : "TITLE : " + mission.title + "\n" + url;
-
-          var msgEl = document.getElementById("mission_copy_" + mission.guid);
-
-          try {
-            if (typeof ClipboardItem === 'undefined') {
-              throw new Error('ClipboardItem not supported');
-            }
-            const response = await fetch(mission.image);
-            const blob = await response.blob(); // ← await追加
-            const textBlob = new Blob([copiedtext], { type: 'text/plain' });
-
-            const data = new ClipboardItem({
-              'text/plain': textBlob,
-              'image/png': blob
-            });
-
-            await navigator.clipboard.write([data]);
-            if (msgEl) msgEl.textContent = "done(Copy+(PC))";
-          } catch (err) {
-            console.log(`fail: ${err}`);
-            if (msgEl) msgEl.textContent = "error: " + err.message; // consoleが見れなくてもここで確認可能
-          }
-        };
-
-        var copyLinkImageAndText = container.appendChild(document.createElement('input'));
-        copyLinkImageAndText.type = "button";
-        copyLinkImageAndText.value = "Copy+(PC)";
-        copyLinkImageAndText.addEventListener("click", copyImage);
-      }
-
-      // pc/スマホ両方で出しておきたいもの
-      var copylink = container.appendChild(document.createElement('input'));
-      copylink.type = "button";   // ← これが無いとテキストボックスになる
-      copylink.value = "COPY";    // ← ボタンに表示するラベル
-      copylink.addEventListener('click', function (ev) {
-        ev.preventDefault();
-
-        var url = "https://link.ingress.com/mission/" + mission.guid;
-        var copiedtext = (typeof len !== 'undefined')
-          ? "TITLE : " + mission.title + "\nLENGTH : " + len + "\n" + url
-          : "TITLE : " + mission.title + "\n" + url;
-
-        var msgEl = document.getElementById("mission_copy_" + mission.guid);
-
-        if (!navigator.clipboard || !navigator.clipboard.writeText) {
-          if (msgEl) msgEl.textContent = "error: clipboard API not available";
-          return;
-        }
-
-        navigator.clipboard.writeText(copiedtext).then(
-          function () {
-            if (DEVICE === 'desktop' && msgEl) msgEl.textContent = "done(COPY)";
-          },
-          function (err) {
-            console.log(`fail: ${err}`);
-            if (msgEl) msgEl.textContent = "error: " + err;
-          }
-        );
-      });
-
-      // スマホのときだけ、Ingress でミッションを開く「OPEN」ボタンを COPY の隣に出す
-      if (DEVICE === 'mobile' || DEVICE === 'tablet') {
-        var openBtn = container.appendChild(document.createElement('input'));
-        openBtn.type = 'button';
-        openBtn.value = 'OPEN';
-        openBtn.addEventListener('click', function (ev) {
-          ev.preventDefault();
-
-          // 一時的なリンクを作ってクリックし、OSにURLの処理（アプリ起動）を任せる
-          var a = document.createElement('a');
-          a.href = 'https://link.ingress.com/mission/' + mission.guid;
-          a.target = '_blank';
-          a.rel = 'noopener';
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-        });
-      }
-
-      // ////////////////////////////
-      // // テキストのみ
-      // var copylink = container.appendChild(document.createElement('input'));
-      // copylink.type = "button";
-      // copylink.value = "COPY";
-      // copylink.addEventListener(
-      //   'click',
-      //   function (ev) {
-      //     var url = "https://link.ingress.com/mission/" + mission.guid;
-
-      //     var copiedtext = "";
-      //     if (typeof len !== 'undefined') {
-      //       copiedtext = "TITLE : " + mission.title + "\nLENGTH : " + len + "\n" + url;
-      //     } else {
-      //       copiedtext = "TITLE : " + mission.title + "\n" + url;
-      //     }
-
-      //     // コピーボタン
-      //     navigator.clipboard.writeText(copiedtext).then(
-      //       () => { /*console.log("success " + mission.title);*/ },
-      //       (msg) => { console.log(`fail: ${msg}`); }
-      //     );
-      //     // コピーしたのをわかりやすくしたかっただけのやつ。スマホのほうではいらなかったのでいったんコメントアウト
-      //     if (DEVICE == 'desktop') {
-      //       document.getElementById("mission_copy_" + mission.guid).textContent = "done(COPY)"
-      //     }
-      //     ev.preventDefault();
-      //   }
-      //   // false
-      // );
-      // コピーしたことを出力してるところ
-      var copymessage = container.appendChild(document.createElement('p'));
-      copymessage.id = "mission_copy_" + mission.guid;
-      // TODO こぴーできるように ここまで
-      /////////////////////////////////////////////////////
-
-
       if (cachedMission) {
         var span = container.appendChild(document.createElement('span'));
-
         span.className = 'nickname ' + (cachedMission.authorTeam === 'R' ? 'res' : 'enl');
         span.textContent = cachedMission.authorNickname;
 
@@ -1247,7 +593,7 @@ function wrapper(plugin_info) {
             return !!waypoint.portal;
           })
           .map(function (waypoint) {
-            return L.latLng(waypoint.portal.latE6 / 1e6, waypoint.portal.lngE6 / 1e6);
+            return new L.LatLng(waypoint.portal.latE6 / 1e6, waypoint.portal.lngE6 / 1e6);
           })
           .map(function (latlng1, i, latlngs) {
             if (i === 0) return 0;
@@ -1260,7 +606,7 @@ function wrapper(plugin_info) {
 
         if (len > 0) {
           if (len > 1000) {
-            len = Math.round(len / 100) / 10 + 'km' + '(' + Math.round(len * 10) / 10 + 'm' + ')';
+            len = Math.round(len / 100) / 10 + 'km';
           } else {
             len = Math.round(len * 10) / 10 + 'm';
           }
@@ -1332,7 +678,7 @@ function wrapper(plugin_info) {
           return !!waypoint.portal;
         })
         .map(function (waypoint) {
-          var position = L.latLng(waypoint.portal.latE6 / 1e6, waypoint.portal.lngE6 / 1e6);
+          var position = new L.LatLng(waypoint.portal.latE6 / 1e6, waypoint.portal.lngE6 / 1e6);
           var distance = position.distanceTo(window.plugin.distanceToPortal.currentLoc);
           return {
             waypoint: waypoint,
@@ -1714,7 +1060,7 @@ function wrapper(plugin_info) {
           return;
         }
 
-        this.markedStarterPortals[guid] = L.circleMarker(L.latLng(portal.options.data.latE6 / 1e6, portal.options.data.lngE6 / 1e6), {
+        this.markedStarterPortals[guid] = L.circleMarker(new L.LatLng(portal.options.data.latE6 / 1e6, portal.options.data.lngE6 / 1e6), {
           radius: portal.options.radius + Math.ceil(portal.options.radius / 2),
           weight: 3,
           opacity: 1,
@@ -1946,7 +1292,7 @@ function wrapper(plugin_info) {
 	clear: left;\
 }\
 .plugin-mission-summary.checked::after {\
-	content: "✓";\
+	content: "笨�";\
 	display: block;\
 	pointer-events: none;\
 	position: absolute;\
@@ -2203,4 +1549,3 @@ var info = {};
 if (typeof GM_info !== 'undefined' && GM_info && GM_info.script) info.script = { version: GM_info.script.version, name: GM_info.script.name, description: GM_info.script.description };
 script.appendChild(document.createTextNode('(' + wrapper + ')(' + JSON.stringify(info) + ');'));
 (document.body || document.head || document.documentElement).appendChild(script);
-
