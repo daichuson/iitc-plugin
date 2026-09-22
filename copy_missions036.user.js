@@ -221,7 +221,7 @@ function wrapper(plugin_info) {
     missionListUserResized: false,
     // ユーザーがミッション詳細モーダルをリサイズしたときの高さ（null=未変更）
     missionDetailHeight: null,
-        // 詳細の一括取得（1件ずつ、この間隔[ms]を空けて取得する）
+    // 詳細の一括取得（1件ずつ、この間隔[ms]を空けて取得する）
     DETAIL_LOAD_INTERVAL: 400,
     isLoadingDetails: false,
     // true: 一覧を表示するたびに、詳細未取得のミッションを自動で取得する（リクエストが増えるので通常はfalse）
@@ -277,7 +277,7 @@ function wrapper(plugin_info) {
       this.loadMission(guid, this.showMissionDialog.bind(this));
     },
 
-        // ミッション詳細モーダルの高さ：自動サイズのときは画面の半分まで。ユーザーがリサイズしたらそのサイズを保持する
+    // ミッション詳細モーダルの高さ：自動サイズのときは画面の半分まで。ユーザーがリサイズしたらそのサイズを保持する
     setupMissionDialogSize: function (dlg) {
       var me = this;
       var $wrap = dlg.closest('.ui-dialog');
@@ -608,8 +608,8 @@ function wrapper(plugin_info) {
         this.mdCityFilter === 'all'
           ? all
           : all.filter(function (m) {
-              return self.getMdGroup(m.title).key === self.mdCityFilter;
-            });
+            return self.getMdGroup(m.title).key === self.mdCityFilter;
+          });
       this.mdDisplayedMissions = missions;
 
       var caption = 'MD List (' + (this.mdCityFilter === 'all' ? missions.length : missions.length + '/' + all.length) + ')';
@@ -791,7 +791,7 @@ function wrapper(plugin_info) {
       content.scrollTop = scrollTop;
       var newRadio = $(openDialog).find('.plugin-mission-md-cities')[0];
       if (newRadio) newRadio.scrollTop = radioScrollTop;
-      
+
     },
 
     // 一覧に出たミッションを全部、累積データに追加する（追加件数を返す）
@@ -881,6 +881,16 @@ function wrapper(plugin_info) {
               },
             },
             {
+              text: 'Load details',
+              css: { float: 'left', 'margin-right': '2px' },
+              click: function () {
+                window.plugin.missions.loadDetailsForDialog('filter');
+              },
+              create: function () {
+                window.plugin.missions.filterLoadDetailsButton = this;
+              },
+            },
+            {
               text: 'Ok',
               click: function () {
                 $(this).dialog('close');
@@ -937,6 +947,13 @@ function wrapper(plugin_info) {
         return (a.title || '').localeCompare(b.title || '', 'ja', { numeric: true });
       });
       this.filterDisplayedMissions = missions;
+
+      // Load details ボタンの有効・無効を切り替える
+      // 24件以下：常に押せる／24件超：キーワードが空、または件数が6の倍数でなければ押せない
+      // ※ disabled にはせず、見た目だけグレーにする（押したときに理由をメッセージで出すため）
+      var keywordEmpty = !this.normalizeText(this.filterKeyword).trim();
+      var canLoadDetails = missions.length <= 24 || (!keywordEmpty && missions.length % 6 === 0);
+      $(this.filterLoadDetailsButton).toggleClass('ui-state-disabled', !canLoadDetails);
 
       var listBox = $(openDialog).find('.plugin-mission-filter-list')[0];
       if (!listBox) return;
@@ -1005,7 +1022,7 @@ function wrapper(plugin_info) {
         listEl.style.maxHeight = Math.max(half - st.overhead, 60) + 'px';
       }
     },
-        // 詳細未取得のミッションを、1件ずつ間隔をあけて取得する
+    // 詳細未取得のミッションを、1件ずつ間隔をあけて取得する
     loadDetailsForList: function (missions, onProgress, onFinish) {
       var me = this;
       if (me.isLoadingDetails) return;
@@ -1019,6 +1036,7 @@ function wrapper(plugin_info) {
         return;
       }
 
+      // 連打防止のため、ここで即座にロック（実際の開始は1秒後）
       me.isLoadingDetails = true;
       var done = 0;
 
@@ -1037,7 +1055,10 @@ function wrapper(plugin_info) {
         };
         me.loadMission(m.guid, step, step);
       };
-      next();
+
+      // 開始を2秒遅らせる（sleep代わり）。連続クリックされてもisLoadingDetailsで弾かれる
+      if (onProgress) onProgress(0, total);
+      setTimeout(next, 2000);
     },
 
     // 「Missions in view」の一覧の詳細を取得して、終わったら再描画する
@@ -1077,6 +1098,15 @@ function wrapper(plugin_info) {
       if (!list.length) {
         setStatus('対象がありません');
         return;
+      }
+
+      // Filter List のみ：24件超のときは追加の制限をかける
+      if (!isMd && list.length > 24) {
+        var keywordEmpty = !me.normalizeText(me.filterKeyword).trim();
+        if (keywordEmpty || list.length % 6 !== 0) {
+          setStatus('絞り込み条件を満たしていません');
+          return;
+        }
       }
 
       me.loadDetailsForList(
