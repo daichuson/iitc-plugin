@@ -91,6 +91,11 @@ function wrapper(plugin_info) {
     DEVICE = device();
     console.log(DEVICE);
   }
+  var csvAveCount = 0;
+  var csvAveLength = 0;
+  var csvAveTime = 0;
+  var csvAvePlayer = 0;
+  var csvAveRating = 0;
 
   var decodeWaypoint = function (data) {
     var result = {
@@ -226,6 +231,8 @@ function wrapper(plugin_info) {
     isLoadingDetails: false,
     // true: 一覧を表示するたびに、詳細未取得のミッションを自動で取得する（リクエストが増えるので通常はfalse）
     autoLoadDetails: false,
+    // MD Listの「今年分を強制更新」チェック状態
+    mdForceCurrentYear: false,
 
     // 直近で「Missions in view」に表示した一覧（Load detailsの対象・再描画用）
     currentListMissions: [],
@@ -389,10 +396,7 @@ function wrapper(plugin_info) {
             },
           });
 
-        // スマホのときだけ、画面の上のほうに表示する
-        if (this.isMobile()) {
-          dlg.dialog('option', 'position', this.getTopPosition());
-        }
+        dlg.dialog('option', 'position', this.getTopPosition());
         // 縦幅は画面の半分まで（ユーザーがリサイズしたらそのサイズを保持）
         this.setupMissionDialogSize(dlg);
       }
@@ -472,15 +476,12 @@ function wrapper(plugin_info) {
           ],
         });
 
-        // スマホのときだけ、画面の上のほうに表示する（MD Listと同じ位置）
-        if (this.isMobile()) {
-          $(window.DIALOGS['dialog-missionsList']).dialog('option', 'position', {
-            my: 'center top',
-            at: 'center top+50',
-            of: window,
-            collision: 'fit',
-          });
-        }
+        $(window.DIALOGS['dialog-missionsList']).dialog('option', 'position', {
+          my: 'center top',
+          at: 'center top+50',
+          of: window,
+          collision: 'fit',
+        });
         // ユーザーがリサイズしたら、その高さを覚えておく
         $(window.DIALOGS['dialog-missionsList']).on('dialogresizestop', function () {
           window.plugin.missions.missionListHeight = $(this).parent().height();
@@ -519,6 +520,7 @@ function wrapper(plugin_info) {
     // MD yyyy を含むミッションだけに絞り、同名を除外する
     filterMdMissions: function (missions) {
       var self = this;
+      missions = (missions || []).filter(Boolean); // undefined が混ざっても落ちないようにする
       var targets = missions.filter(function (m) {
         return self.MD_REGEX.test(m.title || '');
       });
@@ -544,6 +546,12 @@ function wrapper(plugin_info) {
         seen[key] = true;
         return true;
       });
+    },
+    // タイトルから「MD yyyy」の yyyy を文字列で返す（無ければ null）
+    getMdYear: function (title) {
+      var s = String(title || '').normalize('NFKC');
+      var m = s.match(/(^|[^A-Za-z])MD\s?(\d{4})(?!\d)/i);
+      return m ? m[2] : null;
     },
     // タイトルから「開催年 + 開催地点」を取り出す
     getMdGroup: function (title) {
@@ -584,9 +592,10 @@ function wrapper(plugin_info) {
       // 累積データから、同名を除いたリストを作り、五十音順に並べる
       var all = this.filterMdMissions(
         Object.keys(this.mdMissions).map(function (guid) {
-          return window.plugin.missions.mdMissions[guid];
+          return self.mdMissions[guid];
         })
       );
+
       all.sort(function (a, b) {
         return a.title.localeCompare(b.title, 'ja', { numeric: true });
       });
@@ -648,6 +657,28 @@ function wrapper(plugin_info) {
           });
       }
 
+      // 今年分の強制更新チェック（表示中のリストに今年のMDがあるときだけ表示）
+      var thisYearStr = String(new Date().getFullYear());
+      var thisYearCount = missions.filter(function (m) {
+        return self.getMdYear(m.title) === thisYearStr;
+      }).length;
+
+      if (thisYearCount > 0) {
+        var forceLabel = wrapper.appendChild(document.createElement('label'));
+        forceLabel.style.cssText = 'display:block; margin:0 0 4px 0; cursor:pointer;';
+        var forceCheck = forceLabel.appendChild(document.createElement('input'));
+        forceCheck.type = 'checkbox';
+        forceCheck.checked = self.mdForceCurrentYear;
+        forceCheck.style.cssText = 'margin-right:4px; vertical-align:middle;';
+        forceLabel.appendChild(document.createTextNode(thisYearStr + '年分を強制更新 (' + thisYearCount + ')'));
+        forceCheck.addEventListener('change', function () {
+          self.mdForceCurrentYear = forceCheck.checked;
+        });
+      } else {
+        // 非表示のときは、見えないチェックが残らないようにOFFに戻す
+        self.mdForceCurrentYear = false;
+      }
+
       // コピー結果の表示欄
       var status = wrapper.appendChild(document.createElement('p'));
       status.id = 'mission_md_status';
@@ -671,7 +702,7 @@ function wrapper(plugin_info) {
 
         window.dialog({
           id: 'missionsListMD',
-          html: '',
+          html: '&nbsp;',
           height: 'auto',
           width: '400px',
           title: caption,
@@ -721,7 +752,7 @@ function wrapper(plugin_info) {
               },
             },
             {
-              text: 'CopyDetail all',
+              text: 'Copy Detail',
               css: { float: 'left', 'margin-right': '2px' },
               click: function () {
                 var me = window.plugin.missions;
@@ -745,7 +776,70 @@ function wrapper(plugin_info) {
 
                 navigator.clipboard.writeText(text).then(
                   function () {
-                    if (statusEl) statusEl.textContent = 'done(CopyDetail ALL: ' + list.length + ')';
+                    if (statusEl) statusEl.textContent = 'done(Copy Detail: ' + list.length + ')';
+                  },
+                  function (err) {
+                    console.log('fail: ' + err);
+                    if (statusEl) statusEl.textContent = 'error: ' + err;
+                  }
+                );
+              },
+            },
+            {
+              text: 'Copy CSV',
+              css: { float: 'left', 'margin-right': '2px' },
+              click: function () {
+                var me = window.plugin.missions;
+                var list = me.mdDisplayedMissions || [];
+                var statusEl = document.getElementById('mission_md_status');
+
+                if (!list.length) {
+                  if (statusEl) statusEl.textContent = 'コピー対象がありません';
+                  return;
+                }
+                if (!navigator.clipboard || !navigator.clipboard.writeText) {
+                  if (statusEl) statusEl.textContent = 'error: clipboard API not available';
+                  return;
+                }
+
+                var lines = [me.CSV_HEADER];
+
+                list.forEach(function (m) {
+                  lines.push(me.getMissionCopyCSV(m));
+                });
+
+                // 最後に集計行を追加
+                var stats = me.getMissionCSVStats(list);
+
+                lines.push(
+                  [
+                    'AVERAGE',
+                    stats.averageLength != 0 ? Math.round(stats.averageLength * 1000) / 1000 + 'm' : '',
+                    '',// me.formatCSVAverageTime(stats.averageTime),
+                    stats.averagePlayer != 0 ? Math.round(stats.averagePlayer * 10) / 10: '',
+                    stats.averageRating,
+                    // ''
+                  ].join(',')
+                );
+
+                if (stats.totalLength != 0) {
+                  lines.push(
+                    [
+                      'TOTAL',
+                      Math.round(stats.totalLength * 1000) / 1000 + 'm',
+                      '',
+                      stats.totalPlayer,
+                      '',
+                      // ''
+                    ].join(',')
+                  );
+                }
+
+                var text = lines.join('\n');
+
+                navigator.clipboard.writeText(text).then(
+                  function () {
+                    if (statusEl) statusEl.textContent = 'done(Copy CSV: ' + list.length + ')';
                   },
                   function (err) {
                     console.log('fail: ' + err);
@@ -832,7 +926,7 @@ function wrapper(plugin_info) {
 
         window.dialog({
           id: 'missionsListFilter',
-          html: '',
+          html: '&nbsp;',
           height: 'auto',
           width: '400px',
           title: 'Filter List',
@@ -1022,13 +1116,13 @@ function wrapper(plugin_info) {
         listEl.style.maxHeight = Math.max(half - st.overhead, 60) + 'px';
       }
     },
-    // 詳細未取得のミッションを、1件ずつ間隔をあけて取得する
-    loadDetailsForList: function (missions, onProgress, onFinish) {
+    loadDetailsForList: function (missions, onProgress, onFinish, forceFilter) {
       var me = this;
       if (me.isLoadingDetails) return;
 
+      // キャッシュが無いもの、または forceFilter に該当するものを取得対象にする
       var queue = (missions || []).filter(function (m) {
-        return !me.getMissionCache(m.guid);
+        return !me.getMissionCache(m.guid) || (forceFilter && forceFilter(m));
       });
       var total = queue.length;
       if (!total) {
@@ -1036,7 +1130,6 @@ function wrapper(plugin_info) {
         return;
       }
 
-      // 連打防止のため、ここで即座にロック（実際の開始は1秒後）
       me.isLoadingDetails = true;
       var done = 0;
 
@@ -1047,16 +1140,20 @@ function wrapper(plugin_info) {
           return;
         }
         var m = queue.shift();
-        // 成功しても失敗しても次へ進む
         var step = function () {
           done++;
           if (onProgress) onProgress(done, total);
           setTimeout(next, me.DETAIL_LOAD_INTERVAL);
         };
-        me.loadMission(m.guid, step, step);
+        // 強制対象ならキャッシュを無視して取得する
+        try {
+          me.loadMission(m.guid, step, step, !!(forceFilter && forceFilter(m)));
+        } catch (e) {
+          console.error('loadMission failed', e);
+          step();
+        }
       };
 
-      // 開始を2秒遅らせる（sleep代わり）。連続クリックされてもisLoadingDetailsで弾かれる
       if (onProgress) onProgress(0, total);
       setTimeout(next, 2000);
     },
@@ -1109,16 +1206,30 @@ function wrapper(plugin_info) {
         }
       }
 
+      // MD Listのみ：チェックがあれば「今年のMD」を強制更新の対象にする
+      var forceFilter = null;
+      if (isMd && me.mdForceCurrentYear) {
+        var thisYear = String(new Date().getFullYear());
+        forceFilter = function (m) {
+          return me.getMdYear(m.title) === thisYear;
+        };
+      }
+
       me.loadDetailsForList(
         list,
         function (done, total) {
           setStatus('詳細取得中 ' + done + '/' + total);
         },
         function (total) {
-          if (isMd) me.refreshMdMissionDialog();
-          else me.refreshFilterMissionDialog(false);
+          if (isMd) {
+            me.mdForceCurrentYear = false; // 連続で全件再取得しないよう、完了したらチェックを外す
+            me.refreshMdMissionDialog();
+          } else {
+            me.refreshFilterMissionDialog(false);
+          }
           setStatus(total ? '詳細取得完了 (' + total + '件)' : '取得済みです');
-        }
+        },
+        forceFilter
       );
     },
     // MDウィンドウが開いている場合のみ再描画
@@ -1265,10 +1376,10 @@ function wrapper(plugin_info) {
       );
     },
 
-    loadMission: function (guid, callback, errorcallback) {
+    loadMission: function (guid, callback, errorcallback, force) {
       var me = this;
       // TODO: we need to refresh data often enough, portal data can quickly go stale
-      if (this.cacheByMissionGuid[guid] && this.cacheByMissionGuid[guid].time > Date.now() - this.missionCacheTime) {
+      if (!force && this.cacheByMissionGuid[guid] && this.cacheByMissionGuid[guid].time > Date.now() - this.missionCacheTime) {
         callback(this.getMissionCache(guid, true));
         return;
       }
@@ -1383,6 +1494,194 @@ function wrapper(plugin_info) {
       return lines.join('\n');
     },
 
+    // CSVの1フィールドをエスケープする（カンマ・ダブルクォート・改行を含む場合は "" で囲む）
+    csvEscapeField: function (value) {
+      var s = value === undefined || value === null ? '' : String(value);
+      if (/[",\n]/.test(s)) {
+        s = '"' + s.replace(/"/g, '""') + '"';
+      }
+      return s;
+    },
+    // CSV用の集計値を計算
+    getMissionCSVStats: function (missions) {
+      var totalLength = 0;
+      var lengthCount = 0;
+
+      var totalTime = 0;
+      var timeCount = 0;
+
+      var totalPlayer = 0;
+      var playerCount = 0;
+
+      var totalRating = 0;
+      var ratingCount = 0;
+
+      (missions || []).forEach(function (mission) {
+        var cached = this.getMissionCache(mission.guid);
+
+        // 距離
+        if (cached) {
+          var len = cached.waypoints
+            .filter(function (waypoint) {
+              return !!waypoint.portal;
+            })
+            .map(function (waypoint) {
+              return new L.LatLng(
+                waypoint.portal.latE6 / 1e6,
+                waypoint.portal.lngE6 / 1e6
+              );
+            })
+            .map(function (latlng1, i, latlngs) {
+              if (i === 0) return 0;
+              return latlng1.distanceTo(latlngs[i - 1]);
+            })
+            .reduce(function (a, b) {
+              return a + b;
+            }, 0);
+
+          totalLength += len;
+          lengthCount++;
+        }
+
+        // 平均クリア時間（秒）
+        if (
+          mission.medianCompletionTimeMs !== undefined &&
+          mission.medianCompletionTimeMs !== null &&
+          mission.medianCompletionTimeMs !== ''
+        ) {
+          var timeValue = Number(mission.medianCompletionTimeMs);
+
+          if (!isNaN(timeValue)) {
+            totalTime += timeValue / 1000;
+            timeCount++;
+          }
+        }
+
+        // Player人数
+        if (
+          cached &&
+          cached.numUniqueCompletedPlayers !== undefined &&
+          cached.numUniqueCompletedPlayers !== null &&
+          cached.numUniqueCompletedPlayers !== ''
+        ) {
+          var playerValue = Number(cached.numUniqueCompletedPlayers);
+
+          if (!isNaN(playerValue)) {
+            totalPlayer += playerValue;
+            playerCount++;
+          }
+        }
+
+        // Rating
+        if (
+          mission.ratingE6 !== undefined &&
+          mission.ratingE6 !== null &&
+          mission.ratingE6 !== ''
+        ) {
+          var ratingValue = Number(mission.ratingE6);
+
+          if (!isNaN(ratingValue)) {
+            totalRating += ratingValue / 10000;
+            ratingCount++;
+          }
+        }
+      }, this);
+
+      // 平均Rating
+      var averageRating = ratingCount > 0
+        ? Math.round((totalRating / ratingCount) * 100) / 100 + '%'
+        : '';
+
+      return {
+        averageLength: lengthCount > 0
+          ? totalLength / lengthCount
+          : 0,
+
+        totalLength: totalLength,
+
+        averageTime: timeCount > 0
+          ? totalTime / timeCount
+          : 0,
+
+        averagePlayer: playerCount > 0
+          ? totalPlayer / playerCount
+          : 0,
+
+        totalPlayer: totalPlayer,
+
+        averageRating: averageRating
+      };
+    },
+
+    // 秒をCSV表示用の時間文字列に変換
+    formatCSVAverageTime: function (seconds) {
+      if (!seconds) return '';
+      return timeToRemaining(Math.round(seconds));
+    },
+
+    // Title, Length, AverageTime, Players, Rating の形式で1件分のCSV行を返す
+    getMissionCopyCSV: function (mission) {
+      var cached = this.getMissionCache(mission.guid);
+
+      var length = '';
+
+      if (cached) {
+        var len = cached.waypoints
+          .filter(function (waypoint) {
+            return !!waypoint.portal;
+          })
+          .map(function (waypoint) {
+            return new L.LatLng(
+              waypoint.portal.latE6 / 1e6,
+              waypoint.portal.lngE6 / 1e6
+            );
+          })
+          .map(function (latlng1, i, latlngs) {
+            if (i === 0) return 0;
+            return latlng1.distanceTo(latlngs[i - 1]);
+          })
+          .reduce(function (a, b) {
+            return a + b;
+          }, 0);
+
+        if (len > 0) {
+          if (len > 1000) {
+            length =
+              Math.round(len / 100) / 10 +
+              'km' +
+              '(' +
+              Math.round(len * 10) / 10 +
+              'm' +
+              ')';
+          } else {
+            length = Math.round(len * 10) / 10 + 'm';
+          }
+        } else {
+          length = '0m';
+        }
+      }
+
+      var averageTime =
+        timeToRemaining((Number(mission.medianCompletionTimeMs) / 1000) | 0);
+
+      var rating =
+        ((Number(mission.ratingE6) / 100) | 0) / 100 + '%';
+
+      // クリア人数は詳細にしか無いので、キャッシュが無い場合は空
+      var players = cached
+        ? cached.numUniqueCompletedPlayers
+        : '';
+
+      var fields = [
+        mission.title,
+        length,
+        averageTime,
+        players,
+        rating
+      ];
+
+      return fields.map(this.csvEscapeField, this).join(',');
+    },
 
     renderMissionSummary: function (mission) {
       var cachedMission = this.getMissionCache(mission.guid);
@@ -1425,7 +1724,7 @@ function wrapper(plugin_info) {
 
       DEVICE = device();
 
-      console.log("DEVICE : " + DEVICE);
+      // console.log("DEVICE : " + DEVICE);
 
       /////////////////////////////////////////
       // 画像とテキストを一緒にコピー（PCのみ）
