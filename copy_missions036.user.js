@@ -561,7 +561,8 @@ function wrapper(plugin_info) {
 
       var year = m[2];
       var rest = m[3] || '';
-      var idx = rest.indexOf(',');
+      // var idx = rest.indexOf(',');
+      var idx = rest.search(/[,.]/);
       var city = (idx > 0 ? rest.slice(0, idx) : rest.split(/\s+/)[0]).trim();
 
       // 「CNT16」「CNT17」のように番号が付く場合は、数字を省いて同じ開催地点にまとめる
@@ -650,7 +651,11 @@ function wrapper(plugin_info) {
         addRadio('all', 'All (' + all.length + ')');
         Object.keys(groups)
           .sort(function (a, b) {
-            return groups[a].label.localeCompare(groups[b].label, 'ja', { numeric: true });
+            if (a === 'other') return b === 'other' ? 0 : 1;
+            if (b === 'other') return -1;
+            // Keys are "year|city". Compare these with JavaScript's default
+            // string ordering: the four-digit year first, then the city name.
+            return a < b ? -1 : a > b ? 1 : 0;
           })
           .forEach(function (key) {
             addRadio(key, groups[key].label + ' (' + groups[key].count + ')');
@@ -802,7 +807,7 @@ function wrapper(plugin_info) {
                   return;
                 }
 
-                var lines = [me.CSV_HEADER];
+                var lines = ["TITLE,Length,Time,Complete,Rating"];
 
                 list.forEach(function (m) {
                   lines.push(me.getMissionCopyCSV(m));
