@@ -831,7 +831,7 @@ function wrapper(plugin_info) {
                   lines.push(
                     [
                       'TOTAL',
-                      Math.round(stats.totalLength * 1000) / 1000 + 'm',
+                      (stats.totalLength > 1000 ? Math.round(stats.totalLength / 100) / 10 + 'km(' + Math.round(stats.totalLength * 1000) / 1000 + 'm)' : Math.round(stats.totalLength * 1000) / 1000 + 'm'),
                       '',
                       stats.totalPlayer,
                       '',
@@ -1799,32 +1799,35 @@ function wrapper(plugin_info) {
         );
       });
 
-      // pc/スマホ両方で出しておきたいもの
-      var copyDetaillink = container.appendChild(document.createElement('input'));
-      copyDetaillink.type = "button";   // これが無いとテキストボックスになる
-      copyDetaillink.value = "Detail";    // ボタンに表示するラベル
-      copyDetaillink.addEventListener('click', function (ev) {
-        ev.preventDefault();
+      // pc/スマホ両方で出しておきたいもの（キャッシュに詳細が無いときは出さない）
+      if (cachedMission) {
+        var copyDetaillink = container.appendChild(document.createElement('input'));
+        copyDetaillink.type = "button";   // これが無いとテキストボックスになる
+        copyDetaillink.value = "Detail";    // ボタンに表示するラベル
+        copyDetaillink.addEventListener('click', function (ev) {
+          ev.preventDefault();
 
-        var copiedtext = window.plugin.missions.getMissionCopyText(mission, true);
+          var copiedtext = window.plugin.missions.getMissionCopyText(mission, true);
 
-        var msgEl = document.getElementById("mission_copy_" + mission.guid);
+          var msgEl = document.getElementById("mission_copy_" + mission.guid);
 
-        if (!navigator.clipboard || !navigator.clipboard.writeText) {
-          if (msgEl) msgEl.textContent = "error: clipboard API not available";
-          return;
-        }
-
-        navigator.clipboard.writeText(copiedtext).then(
-          function () {
-            if (DEVICE === 'desktop' && msgEl) msgEl.textContent = "done(Detail)";
-          },
-          function (err) {
-            console.log(`fail: ${err}`);
-            if (msgEl) msgEl.textContent = "error: " + err;
+          if (!navigator.clipboard || !navigator.clipboard.writeText) {
+            if (msgEl) msgEl.textContent = "error: clipboard API not available";
+            return;
           }
-        );
-      });
+
+          navigator.clipboard.writeText(copiedtext).then(
+            function () {
+              if (DEVICE === 'desktop' && msgEl) msgEl.textContent = "done(Detail)";
+            },
+            function (err) {
+              console.log(`fail: ${err}`);
+              if (msgEl) msgEl.textContent = "error: " + err;
+            }
+          );
+        });
+      }
+
 
       // スマホのときだけ、Ingress でミッションを開く「OPEN」ボタンを COPY の隣に出す
       if (this.isMobile()) {
