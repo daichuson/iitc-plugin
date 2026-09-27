@@ -821,7 +821,7 @@ function wrapper(plugin_info) {
                     'AVERAGE',
                     stats.averageLength != 0 ? Math.round(stats.averageLength * 1000) / 1000 + 'm' : '',
                     '',// me.formatCSVAverageTime(stats.averageTime),
-                    stats.averagePlayer != 0 ? Math.round(stats.averagePlayer * 10) / 10: '',
+                    stats.averagePlayer != 0 ? Math.round(stats.averagePlayer * 10) / 10 : '',
                     stats.averageRating,
                     // ''
                   ].join(',')
@@ -1332,10 +1332,14 @@ function wrapper(plugin_info) {
           }
           callback(missions, 'Missions in View');
         },
-        function (error) {
+        function (jqXHR, textStatus, errorThrown) {
+          // ドラッグ等で前のリクエストがキャンセルされただけの場合は、エラー扱いしない
+          if (textStatus === 'abort') {
+            return;
+          }
           console.error('Error loading missions in bounds', arguments);
           if (errorcallback) {
-            errorcallback(error);
+            errorcallback(jqXHR);
           }
         }
       );
