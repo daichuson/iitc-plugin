@@ -189,8 +189,8 @@ function wrapper(plugin_info) {
     SYNC_DELAY: 5000,
     enableSync: false,
 
-    // 「MD 2024」「MD2024」のような表記にマッチ（前後が英字/数字でないこと）
-    MD_REGEX: /(^|[^A-Za-z])MD\s?\d{4}(?!\d)/i,
+    // 「MD 2024」「MD2024」「MD [場所名]2024」のような表記にマッチ（前後が英字/数字でないこと）
+    MD_REGEX: /(^|[^A-Za-z])MD(?:\s+[A-Za-z]+)*\s*\d{4}(?!\d)/i,
     // スマホのときだけ、モーダルを画面の上のほうに表示する
     isMobile: function () {
       return DEVICE === 'mobile' || DEVICE === 'tablet';
@@ -550,23 +550,30 @@ function wrapper(plugin_info) {
     // タイトルから「MD yyyy」の yyyy を文字列で返す（無ければ null）
     getMdYear: function (title) {
       var s = String(title || '').normalize('NFKC');
-      var m = s.match(/(^|[^A-Za-z])MD\s?(\d{4})(?!\d)/i);
+      var m = s.match(/(^|[^A-Za-z])MD(?:\s+[A-Za-z]+)*\s*(\d{4})(?!\d)/i);
       return m ? m[2] : null;
     },
     // タイトルから「開催年 + 開催地点」を取り出す
     getMdGroup: function (title) {
       var s = String(title || '').normalize('NFKC');
-      var m = s.match(/(^|[^A-Za-z])MD\s?(\d{4})(?!\d)\s*:?\s*(.*)$/i);
+      var m = s.match(/(^|[^A-Za-z])MD((?:\s+[A-Za-z]+)*)\s*(\d{4})(?!\d)\s*:?\s*(.*)$/i);
       if (!m) return { key: 'other', label: 'その他' };
 
-      var year = m[2];
-      var rest = m[3] || '';
-      // var idx = rest.indexOf(',');
-      var idx = rest.search(/[,.]/);
-      var city = (idx > 0 ? rest.slice(0, idx) : rest.split(/\s+/)[0]).trim();
+      var preCity = (m[2] || '').trim();
+      var year = m[3];
+      var rest = m[4] || '';
+
+      var city;
+      if (preCity) {
+        // 新フォーマット「MD [場所名] yyyy:」: MDと年の間の地名をそのまま使う
+        city = preCity;
+      } else {
+        // 従来フォーマット「MD yyyy: [場所名], ポータル名」: コロン以降から地名を取り出す
+        var idx = rest.search(/[,.]/);
+        city = (idx > 0 ? rest.slice(0, idx) : rest.split(/\s+/)[0]).trim();
+      }
 
       // 「CNT16」「CNT17」のように番号が付く場合は、数字を省いて同じ開催地点にまとめる
-      // （数字を除いた結果が空になるときは、元の名前のままにする）
       var stripped = city.replace(/\d+/g, '').replace(/^[\s\-_]+|[\s\-_]+$/g, '');
       if (stripped) city = stripped;
 
