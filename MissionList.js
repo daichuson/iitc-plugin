@@ -299,7 +299,9 @@ function wrapper(plugin_info) {
                 lines.push(
                   [
                     'AVERAGE',
-                    stats.averageLength != 0 ? Math.round(stats.averageLength * 1000) / 1000 + 'm' : '',
+                      stats.totalLength > 1000
+                        ? Math.round(stats.averageLength / 100) / 10 + 'km(' + Math.round(stats.averageLength * 1000) / 1000 + 'm)'
+                        : Math.round(stats.averageLength * 1000) / 1000 + 'm',
                     '',
                     stats.averagePlayer != 0 ? Math.round(stats.averagePlayer * 10) / 10 : '',
                     stats.averageRating,

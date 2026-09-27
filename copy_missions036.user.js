@@ -819,7 +819,7 @@ function wrapper(plugin_info) {
                 lines.push(
                   [
                     'AVERAGE',
-                    stats.averageLength != 0 ? Math.round(stats.averageLength * 1000) / 1000 + 'm' : '',
+                    (stats.averageLength > 1000 ? Math.round(stats.averageLength / 100) / 10 + 'km(' + Math.round(stats.averageLength * 1000) / 1000 + 'm)' : Math.round(stats.averageLength * 1000) / 1000 + 'm'),
                     '',// me.formatCSVAverageTime(stats.averageTime),
                     stats.averagePlayer != 0 ? Math.round(stats.averagePlayer * 10) / 10 : '',
                     stats.averageRating,
@@ -1746,12 +1746,34 @@ function wrapper(plugin_info) {
 
           var msgEl = document.getElementById("mission_copy_" + mission.guid);
 
+          // 画像が使えない場合のフォールバック（通常のCOPYボタンと同じ動作）
+          var copyTextOnly = async function () {
+            if (!navigator.clipboard || !navigator.clipboard.writeText) {
+              if (msgEl) msgEl.textContent = "error: clipboard API not available";
+              return;
+            }
+            try {
+              await navigator.clipboard.writeText(copiedtext);
+              if (msgEl) msgEl.textContent = "done(COPY)";
+            } catch (err) {
+              console.log(`fail: ${err}`);
+              if (msgEl) msgEl.textContent = "error: " + err;
+            }
+          };
+
           try {
             if (typeof ClipboardItem === 'undefined') {
               throw new Error('ClipboardItem not supported');
             }
             const response = await fetch(mission.image);
             const blob = await response.blob();
+
+            // 画像が取得できなかった場合（404のHTMLが返ってくる等）は、テキストのみコピーにフォールバック
+            if (!blob.type || blob.type.indexOf('image/') !== 0) {
+              await copyTextOnly();
+              return;
+            }
+
             const textBlob = new Blob([copiedtext], { type: 'text/plain' });
 
             const data = new ClipboardItem({
@@ -1763,7 +1785,8 @@ function wrapper(plugin_info) {
             if (msgEl) msgEl.textContent = "done(Copy+(PC))";
           } catch (err) {
             console.log(`fail: ${err}`);
-            if (msgEl) msgEl.textContent = "error: " + err.message; // consoleが見れなくてもここで確認可能
+            // ClipboardItem非対応・fetch失敗など、画像コピーができない場合もテキストのみコピーにフォールバック
+            await copyTextOnly();
           }
         };
 
