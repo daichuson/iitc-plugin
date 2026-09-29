@@ -1,6 +1,6 @@
 // ==UserScript==
 // @author         dai02
-// @name           IITC plugin: Missions copy mission
+// @name           IITC plugin: Missions copy
 // @category       Info
 // @description    View missions. Marking progress on waypoints/missions basis. Showing mission paths on the map.
 // @id             copy-missions
@@ -850,8 +850,16 @@ function wrapper(plugin_info) {
               text: 'Clear',
               css: { float: 'left', 'margin-right': '2px' },
               click: function () {
-                window.plugin.copyMissions.allMissions = {};
-                window.plugin.copyMissions.refreshFilterMissionDialog(true);
+                var me = window.plugin.copyMissions;
+                me.allMissions = {};
+                var cachedMissions = Object.keys(me.cacheByMissionGuid).map(function (guid) {
+                  var cached = me.cacheByMissionGuid[guid];
+                  return cached && cached.data;
+                }).filter(function (mission) {
+                  return mission && mission.guid;
+                });
+                me.collectAllMissions(cachedMissions);
+                me.refreshFilterMissionDialog(true);
               },
             },
             {
@@ -909,7 +917,7 @@ function wrapper(plugin_info) {
               },
             },
             {
-              text: 'Open MD List',
+              text: 'MD List',
               css: { float: 'left', 'margin-right': '2px' },
               click: function () {
                 window.plugin.copyMissions.showMdMissionDialog();
@@ -1778,6 +1786,23 @@ function wrapper(plugin_info) {
               if (msgEl) msgEl.textContent = "error: " + err;
             }
           );
+        });
+      }
+
+      // キャッシュ済みミッションを個別に削除する
+      if (cachedMission) {
+        var deleteCacheBtn = container.appendChild(document.createElement('input'));
+        deleteCacheBtn.type = 'button';
+        deleteCacheBtn.value = 'Delete';
+        deleteCacheBtn.title = 'Delete this mission from cache';
+        deleteCacheBtn.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          var me = window.plugin.copyMissions;
+          if (!me.cacheByMissionGuid[mission.guid]) return;
+          delete me.cacheByMissionGuid[mission.guid];
+          me.storeCache();
+          me.refreshFilterMissionDialog(false);
+          if (window.DIALOGS['dialog-copyMissionsListMD']) me.showMdMissionDialog(false);
         });
       }
 
