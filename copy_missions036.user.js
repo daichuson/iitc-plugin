@@ -2,9 +2,8 @@
 // @author         dai02
 // @name           IITC plugin: Missions copy mission
 // @category       Info
-// @version        0.3.6-1
 // @description    View missions. Marking progress on waypoints/missions basis. Showing mission paths on the map.
-// @id             missions
+// @id             copy-missions
 // @match          https://intel.ingress.com/*
 // @match          https://intel-x.ingress.com/*
 // @match          https://*.ingress.com/intel*
@@ -25,7 +24,7 @@ function wrapper(plugin_info) {
   //(leaving them in place might break the 'About IITC' page or break update checks)
   plugin_info.buildName = 'release';
   plugin_info.dateTimeVersion = '2026-05-18-134158';
-  plugin_info.pluginId = 'missions';
+  plugin_info.pluginId = 'copy-missions';
   //END PLUGIN AUTHORS NOTE
 
   /* exported setup, changelog --eslint */
@@ -65,7 +64,7 @@ function wrapper(plugin_info) {
     Portal: 1,
     FieldTrip: 2,
   };
-  var DEVICE = "";
+  var DEVICE;
   function device() {
     const ua = navigator.userAgent;
     const mq = function (q) {
@@ -86,11 +85,8 @@ function wrapper(plugin_info) {
 
     return 'desktop';
   }
+  DEVICE = device();
 
-  window.onload = function () {
-    DEVICE = device();
-    console.log(DEVICE);
-  }
   var csvAveCount = 0;
   var csvAveLength = 0;
   var csvAveTime = 0;
@@ -176,7 +172,7 @@ function wrapper(plugin_info) {
     return data.trim();
   };
 
-  window.plugin.missions = {
+  window.plugin.copyMissions = {
     // 3 days.
     missionCacheTime: 3 * 24 * 3600 * 1e3,
     // 3 weeks.
@@ -251,7 +247,7 @@ function wrapper(plugin_info) {
       }
       var missionHtml = $('<a>')
         .click(this.openPortalMissions.bind(this))
-        .text('Missions');
+        .text('Copy Missions');
       $('.linkdetails').append($('<aside>').append(missionHtml));
     },
 
@@ -274,7 +270,7 @@ function wrapper(plugin_info) {
             this.loadMission(missions[0].guid, this.showMissionDialog.bind(this));
           } else {
             let selectedPortal = window.portals[selectedPortalGuid];
-            this.showMissionListDialog(missions, 'Missions at ' + selectedPortal.options.data.title, true);
+            this.showMissionListDialog(missions, 'Copy Missions at ' + selectedPortal.options.data.title, true);
           }
         }.bind(this)
       );
@@ -368,12 +364,12 @@ function wrapper(plugin_info) {
         tabs.find('.ui-tabs-nav').sortable('refresh');
         tabs.tabs('option', 'active', -1);
         if (window.isSmartphone()) {
-          window.show('plugin-missions');
+          window.show('plugin-copy-missions');
         }
       } else {
         var dlg = window
           .dialog({
-            id: 'plugin-mission-details-' + id,
+            id: 'plugin-copy-mission-details-' + id,
             title: mission.title,
             height: 'auto',
             html: content,
@@ -403,118 +399,17 @@ function wrapper(plugin_info) {
     },
 
     showMissionListDialog: function (missions, caption, isPortalList) {
-
-      this.isShowingPortalList = isPortalList;
       this.isShowingPortalList = isPortalList;
       this.currentListMissions = missions;
-      this.currentListCaption = caption;
-      var isNew = false;
+      this.currentListCaption = 'Filter List';
       var mdAdded = this.collectMdMissions(missions);
       var allAdded = this.collectAllMissions(missions);
 
-      // Check whether dialog is already open
-      let openDialog = window.DIALOGS['dialog-missionsList'];
-      if (openDialog) {
-        // Dialog already there, expand if collapsed
-        if (window.plugin.missions.isMissionListCollapsed) {
-          let dia = $(openDialog).closest('.ui-dialog');
-          let button = dia.find('.ui-dialog-titlebar-button-collapse');
-          if (button) {
-            $(button).click();
-          }
-        }
-      } else {
-        isNew = true;
-        // If dialog is not open, open it
-        window.dialog({
-          id: 'missionsList',
-          html: this.renderMissionList(missions),
-          height: 'auto',
-          width: '400px',
-          collapseCallback: this.onCollapseMissionList,
-          expandCallback: this.onExpandMissionList,
-          dragStop: this.resizeMissionList,
-          title: caption,
-          buttons: [
-            {
-              text: 'Create new mission',
-              click: function () {
-                open('https://missions.ingress.com/');
-              },
-            },
-            {
-              text: 'Ok',
-              click: function () {
-                $(this).dialog('close');
-              },
-            },
-            {
-              text: 'Missions in view',
-              css: { float: 'left', 'margin-right': '2px' },
-              click: function () {
-                window.plugin.missions.openTopMissions();
-              },
-              create: function () {
-                // Store a link to the button so that we can hide or show it.
-                window.plugin.missions.fromPortalListToNormalListButton = this;
-              },
-            },
-            {
-              text: 'MD List',
-              css: { float: 'left', 'margin-right': '2px' },
-              click: function () {
-                window.plugin.missions.showMdMissionDialog();
-              },
-            },
-            {
-              text: 'Filter List',
-              css: { float: 'left', 'margin-right': '2px' },
-              click: function () {
-                window.plugin.missions.showFilterMissionDialog();
-              },
-            },
-          ],
-        });
-
-        $(window.DIALOGS['dialog-missionsList']).dialog('option', 'position', {
-          my: 'center top',
-          at: 'center top+50',
-          of: window,
-          collision: 'fit',
-        });
-        // ユーザーがリサイズしたら、その高さを覚えておく
-        $(window.DIALOGS['dialog-missionsList']).on('dialogresizestop', function () {
-          window.plugin.missions.missionListHeight = $(this).parent().height();
-        });
-
-        this.isMissionListCollapsed = false;
-        // リサイズ保存（外寸で保存し、0以下は無視する）
-        $(window.DIALOGS['dialog-missionsList']).on('dialogresizestop', function () {
-          var h = $(this).parent().outerHeight();
-          if (h > 0) {
-            window.plugin.missions.missionListHeight = h;
-            window.plugin.missions.missionListUserResized = true;
-          }
-        });
-      }
-
-      // Dialog will be open now
-      openDialog = window.DIALOGS['dialog-missionsList'];
-
-      // Set content and title
-      $(openDialog).html(this.renderMissionList(missions)).dialog({ title: caption });
-
-      // When showing list for one portal, show button to switch back to general list, otherwise hide it
-      $(window.plugin.missions.fromPortalListToNormalListButton)[isPortalList ? 'show' : 'hide']();
-
-      this.resizeMissionList();
       if (mdAdded) {
         this.refreshMdMissionDialog();
       }
-      if (allAdded) {
-        this.refreshFilterMissionDialog(false);
-      }
-      this.resizeMissionList(isNew);
+      this.showFilterMissionDialog();
+      if (!allAdded) this.refreshFilterMissionDialog(false);
     },
 
     // MD yyyy を含むミッションだけに絞り、同名を除外する
@@ -629,14 +524,14 @@ function wrapper(plugin_info) {
           });
       this.mdDisplayedMissions = missions;
 
-      var caption = 'MD List (' + (this.mdCityFilter === 'all' ? missions.length : missions.length + '/' + all.length) + ')';
+      var caption = 'Copy MD List (' + (this.mdCityFilter === 'all' ? missions.length : missions.length + '/' + all.length) + ')';
 
       var wrapper = document.createElement('div');
 
       // 開催地点のラジオボタン
       if (all.length) {
         var radioBox = wrapper.appendChild(document.createElement('div'));
-        radioBox.className = 'plugin-mission-md-cities';
+        radioBox.className = 'plugin-copy-mission-md-cities';
         radioBox.style.cssText = 'max-height:7em; overflow-y:auto; margin-bottom:4px;';
 
         var addRadio = function (value, text) {
@@ -704,16 +599,15 @@ function wrapper(plugin_info) {
         content = document.createElement('div');
         content.textContent = '該当するミッションがありません';
       }
-      content.className = 'plugin-mission-md-list';
+      content.className = 'plugin-copy-mission-md-list';
       wrapper.appendChild(content);
 
-      var openDialog = window.DIALOGS['dialog-missionsListMD'];
+      var openDialog = window.DIALOGS['dialog-copyMissionsListMD'];
+      // Filter List（上端+50px）より上にMD Listを重ねて表示する
+      var topPosition = { my: 'center top', at: 'center top+20', of: window, collision: 'fit' };
       if (!openDialog) {
-        // 画面の上部中央から表示する（上端から50pxほど下げて、IITCのヘッダーと重ならないようにする）
-        var topPosition = { my: 'center top', at: 'center top+50', of: window, collision: 'fit' };
-
         window.dialog({
-          id: 'missionsListMD',
+          id: 'copyMissionsListMD',
           html: '&nbsp;',
           height: 'auto',
           width: '400px',
@@ -724,16 +618,22 @@ function wrapper(plugin_info) {
               text: 'Clear',
               css: { float: 'left', 'margin-right': '2px' },
               click: function () {
-                window.plugin.missions.mdMissions = {};
-                window.plugin.missions.mdCityFilter = 'all';
-                window.plugin.missions.showMdMissionDialog(true);
+                var me = window.plugin.copyMissions;
+                me.mdMissions = {};
+                me.collectMdMissions(
+                  Object.keys(me.allMissions).map(function (guid) {
+                    return me.allMissions[guid];
+                  })
+                );
+                me.mdCityFilter = 'all';
+                me.showMdMissionDialog(true);
               },
             },
             {
               text: 'Copy all',
               css: { float: 'left', 'margin-right': '2px' },
               click: function () {
-                var me = window.plugin.missions;
+                var me = window.plugin.copyMissions;
                 var list = me.mdDisplayedMissions || [];
                 var statusEl = document.getElementById('mission_md_status');
 
@@ -767,7 +667,7 @@ function wrapper(plugin_info) {
               text: 'Copy Detail',
               css: { float: 'left', 'margin-right': '2px' },
               click: function () {
-                var me = window.plugin.missions;
+                var me = window.plugin.copyMissions;
                 var list = me.mdDisplayedMissions || [];
                 var statusEl = document.getElementById('mission_md_status');
 
@@ -801,7 +701,7 @@ function wrapper(plugin_info) {
               text: 'Copy CSV',
               css: { float: 'left', 'margin-right': '2px' },
               click: function () {
-                var me = window.plugin.missions;
+                var me = window.plugin.copyMissions;
                 var list = me.mdDisplayedMissions || [];
                 var statusEl = document.getElementById('mission_md_status');
 
@@ -864,7 +764,7 @@ function wrapper(plugin_info) {
               text: 'Load details',
               css: { float: 'left', 'margin-right': '2px' },
               click: function () {
-                window.plugin.missions.loadDetailsForDialog('md');
+                window.plugin.copyMissions.loadDetailsForDialog('md');
               },
             },
             {
@@ -875,18 +775,20 @@ function wrapper(plugin_info) {
             },
           ],
         });
-        openDialog = window.DIALOGS['dialog-missionsListMD'];
+        openDialog = window.DIALOGS['dialog-copyMissionsListMD'];
 
         // 作成時の指定が効かなかった場合に備えて、もう一度位置を設定する
         $(openDialog).dialog('option', 'position', topPosition);
         // リサイズ操作を拾う
-        this.bindListDialogResize('md', openDialog, '.plugin-mission-md-list');
+        this.bindListDialogResize('md', openDialog, '.plugin-copy-mission-md-list');
       }
 
+      $(openDialog).dialog('option', 'position', topPosition);
+
       // 再描画してもスクロール位置が飛ばないようにする（リスト・ラジオ欄とも）
-      var prev = $(openDialog).find('.plugin-mission-md-list')[0];
+      var prev = $(openDialog).find('.plugin-copy-mission-md-list')[0];
       var scrollTop = !resetScroll && prev ? prev.scrollTop : 0;
-      var prevRadio = $(openDialog).find('.plugin-mission-md-cities')[0];
+      var prevRadio = $(openDialog).find('.plugin-copy-mission-md-cities')[0];
       var radioScrollTop = prevRadio ? prevRadio.scrollTop : 0;
 
       $(openDialog).empty().append(wrapper).dialog({ title: caption });
@@ -895,7 +797,7 @@ function wrapper(plugin_info) {
       this.fitListDialog('md', openDialog, content);
 
       content.scrollTop = scrollTop;
-      var newRadio = $(openDialog).find('.plugin-mission-md-cities')[0];
+      var newRadio = $(openDialog).find('.plugin-copy-mission-md-cities')[0];
       if (newRadio) newRadio.scrollTop = radioScrollTop;
 
     },
@@ -931,32 +833,42 @@ function wrapper(plugin_info) {
 
     showFilterMissionDialog: function () {
       var self = this;
-      var openDialog = window.DIALOGS['dialog-missionsListFilter'];
+      var openDialog = window.DIALOGS['dialog-copyMissionsListFilter'];
 
       if (!openDialog) {
         var topPosition = { my: 'center top', at: 'center top+50', of: window, collision: 'fit' };
 
         window.dialog({
-          id: 'missionsListFilter',
+          id: 'copyMissionsListFilter',
           html: '&nbsp;',
           height: 'auto',
           width: '400px',
-          title: 'Filter List',
+          title: 'Copy Filter List',
           position: topPosition,
           buttons: [
             {
               text: 'Clear',
               css: { float: 'left', 'margin-right': '2px' },
               click: function () {
-                window.plugin.missions.allMissions = {};
-                window.plugin.missions.refreshFilterMissionDialog(true);
+                window.plugin.copyMissions.allMissions = {};
+                window.plugin.copyMissions.refreshFilterMissionDialog(true);
+              },
+            },
+            {
+              text: 'Clear Cache',
+              css: { float: 'left', 'margin-right': '2px' },
+              click: function () {
+                var me = window.plugin.copyMissions;
+                if (!window.confirm('Delete all cached mission data?')) return;
+                me.cacheByMissionGuid = {};
+                delete localStorage['plugins-copy-missions-missioncache'];
               },
             },
             {
               text: 'Copy all',
               css: { float: 'left', 'margin-right': '2px' },
               click: function () {
-                var me = window.plugin.missions;
+                var me = window.plugin.copyMissions;
                 var list = me.filterDisplayedMissions || [];
                 var statusEl = document.getElementById('mission_filter_status');
 
@@ -990,10 +902,17 @@ function wrapper(plugin_info) {
               text: 'Load details',
               css: { float: 'left', 'margin-right': '2px' },
               click: function () {
-                window.plugin.missions.loadDetailsForDialog('filter');
+                window.plugin.copyMissions.loadDetailsForDialog('filter');
               },
               create: function () {
-                window.plugin.missions.filterLoadDetailsButton = this;
+                window.plugin.copyMissions.filterLoadDetailsButton = this;
+              },
+            },
+            {
+              text: 'Open MD List',
+              css: { float: 'left', 'margin-right': '2px' },
+              click: function () {
+                window.plugin.copyMissions.showMdMissionDialog();
               },
             },
             {
@@ -1004,14 +923,14 @@ function wrapper(plugin_info) {
             },
           ],
         });
-        openDialog = window.DIALOGS['dialog-missionsListFilter'];
+        openDialog = window.DIALOGS['dialog-copyMissionsListFilter'];
         $(openDialog).dialog('option', 'position', topPosition);
 
-        openDialog = window.DIALOGS['dialog-missionsListFilter'];
+        openDialog = window.DIALOGS['dialog-copyMissionsListFilter'];
         $(openDialog).dialog('option', 'position', topPosition);
 
         // リサイズ操作を拾う
-        self.bindListDialogResize('filter', openDialog, '.plugin-mission-filter-list');
+        self.bindListDialogResize('filter', openDialog, '.plugin-copy-mission-filter-list');
         // 入力欄・コピー結果欄・リスト欄は最初に一度だけ作る（再描画で入力欄が消えないように）
         var box = document.createElement('div');
 
@@ -1030,7 +949,7 @@ function wrapper(plugin_info) {
         status.id = 'mission_filter_status';
 
         var listBox = box.appendChild(document.createElement('div'));
-        listBox.className = 'plugin-mission-filter-list';
+        listBox.className = 'plugin-copy-mission-filter-list';
         listBox.style.overflowY = 'auto';
 
         $(openDialog).empty().append(box);
@@ -1041,7 +960,7 @@ function wrapper(plugin_info) {
 
     // 絞り込みウィンドウのリスト部分だけを再描画する（開いている場合のみ）
     refreshFilterMissionDialog: function (resetScroll) {
-      var openDialog = window.DIALOGS['dialog-missionsListFilter'];
+      var openDialog = window.DIALOGS['dialog-copyMissionsListFilter'];
       if (!openDialog) return;
 
       var self = this;
@@ -1061,7 +980,7 @@ function wrapper(plugin_info) {
       var canLoadDetails = missions.length <= 24 || (!keywordEmpty && missions.length % 6 === 0);
       $(this.filterLoadDetailsButton).toggleClass('ui-state-disabled', !canLoadDetails);
 
-      var listBox = $(openDialog).find('.plugin-mission-filter-list')[0];
+      var listBox = $(openDialog).find('.plugin-copy-mission-filter-list')[0];
       if (!listBox) return;
       var scrollTop = resetScroll ? 0 : listBox.scrollTop;
 
@@ -1072,7 +991,7 @@ function wrapper(plugin_info) {
         listBox.textContent = '該当するミッションがありません';
       }
 
-      $(openDialog).dialog({ title: 'Filter List (' + missions.length + '/' + all.length + ')' });
+      $(openDialog).dialog({ title: 'Copy Filter List (' + missions.length + '/' + all.length + ')' });
 
       // リスト部分の高さ：未リサイズなら画面の半分まで、リサイズ済みならそのサイズを保持
       this.fitListDialog('filter', openDialog, listBox);
@@ -1178,11 +1097,11 @@ function wrapper(plugin_info) {
       me.loadDetailsForList(
         me.currentListMissions,
         function (done, total) {
-          var dlg = window.DIALOGS['dialog-missionsList'];
+          var dlg = window.DIALOGS['dialog-copyMissionsList'];
           if (dlg) $(dlg).dialog({ title: me.currentListCaption + ' [' + done + '/' + total + ']' });
         },
         function () {
-          var dlg = window.DIALOGS['dialog-missionsList'];
+          var dlg = window.DIALOGS['dialog-copyMissionsList'];
           if (!dlg) return;
           $(dlg).html(me.renderMissionList(me.currentListMissions)).dialog({ title: me.currentListCaption });
           me.resizeMissionList();
@@ -1246,32 +1165,32 @@ function wrapper(plugin_info) {
     },
     // MDウィンドウが開いている場合のみ再描画
     refreshMdMissionDialog: function () {
-      if (window.DIALOGS['dialog-missionsListMD']) {
+      if (window.DIALOGS['dialog-copyMissionsListMD']) {
         this.showMdMissionDialog();
       }
     },
 
     onCollapseMissionList: function () {
-      window.plugin.missions.isMissionListCollapsed = true;
-      window.plugin.missions.collapseFix();
+      window.plugin.copyMissions.isMissionListCollapsed = true;
+      window.plugin.copyMissions.collapseFix();
     },
 
     onExpandMissionList: function () {
-      window.plugin.missions.isMissionListCollapsed = false;
-      window.plugin.missions.collapseFix();
-      window.plugin.missions.resizeMissionList(true); // 折りたたみで height:auto になるため、保存した高さを再適用
+      window.plugin.copyMissions.isMissionListCollapsed = false;
+      window.plugin.copyMissions.collapseFix();
+      window.plugin.copyMissions.resizeMissionList(true); // 折りたたみで height:auto になるため、保存した高さを再適用
 
       // When showing missions in View and not portal mission list, refresh list now
-      if (!window.plugin.missions.isShowingPortalList) {
-        window.plugin.missions.openTopMissions();
+      if (!window.plugin.copyMissions.isShowingPortalList) {
+        window.plugin.copyMissions.openTopMissions();
       }
     },
 
     resizeMissionList: function (force) {
-      var me = window.plugin.missions;
+      var me = window.plugin.copyMissions;
       if (me.isMissionListCollapsed) return;
 
-      var openDialog = window.DIALOGS['dialog-missionsList'];
+      var openDialog = window.DIALOGS['dialog-copyMissionsList'];
       if (!openDialog) return;
 
       var $parent = $(openDialog).parent();
@@ -1337,7 +1256,7 @@ function wrapper(plugin_info) {
             }
             return;
           }
-          callback(missions, 'Missions in View');
+          callback(missions, 'Copy Missions in View');
         },
         function (jqXHR, textStatus, errorThrown) {
           // ドラッグ等で前のリクエストがキャンセルされただけの場合は、エラー扱いしない
@@ -1373,7 +1292,7 @@ function wrapper(plugin_info) {
             return;
           }
 
-          window.runHooks('plugin-missions-on-portal-loaded', { missions: missions, portalguid: guid });
+          window.runHooks('plugin-copy-missions-on-portal-loaded', { missions: missions, portalguid: guid });
 
           me.cacheByPortalGuid[guid] = {
             time: Date.now(),
@@ -1413,7 +1332,7 @@ function wrapper(plugin_info) {
             return;
           }
 
-          window.runHooks('plugin-missions-loaded-mission', { mission: mission });
+          window.runHooks('plugin-copy-missions-loaded-mission', { mission: mission });
 
           me.cacheByMissionGuid[guid] = {
             time: Date.now(),
@@ -1705,7 +1624,7 @@ function wrapper(plugin_info) {
       var checked = this.checkedMissions[mission.guid];
 
       var container = document.createElement('div');
-      container.className = 'plugin-mission-summary';
+      container.className = 'plugin-copy-mission-summary';
       container.dataset['mission_mid'] = mission.guid;
       if (checked) {
         container.classList.add('checked');
@@ -1716,7 +1635,7 @@ function wrapper(plugin_info) {
       img.addEventListener(
         'click',
         function () {
-          window.plugin.missions.toggleMission(mission.guid);
+          window.plugin.copyMissions.toggleMission(mission.guid);
         },
         false
       );
@@ -1841,7 +1760,7 @@ function wrapper(plugin_info) {
         copyDetaillink.addEventListener('click', function (ev) {
           ev.preventDefault();
 
-          var copiedtext = window.plugin.missions.getMissionCopyText(mission, true);
+          var copiedtext = window.plugin.copyMissions.getMissionCopyText(mission, true);
 
           var msgEl = document.getElementById("mission_copy_" + mission.guid);
 
@@ -1918,7 +1837,7 @@ function wrapper(plugin_info) {
           }
 
           var infoLength = container.appendChild(document.createElement('span'));
-          infoLength.className = 'plugin-mission-info length help';
+          infoLength.className = 'plugin-copy-mission-info length help';
           infoLength.title = 'Length of this mission.\n\nNOTE: The actual distance required to cover may vary depending on several factors!';
           infoLength.textContent = len;
           img = infoLength.insertBefore(document.createElement('img'), infoLength.firstChild);
@@ -1927,12 +1846,12 @@ function wrapper(plugin_info) {
 
         if (window.plugin.distanceToPortal && window.plugin.distanceToPortal.currentLoc) {
           var infoDistance = container.appendChild(document.createElement('span'));
-          infoDistance.className = 'plugin-mission-info distance help';
+          infoDistance.className = 'plugin-copy-mission-info distance help';
           infoDistance.title = 'Distance to this mission. Click to update.';
           infoDistance.addEventListener(
             'click',
             function () {
-              window.plugin.missions.renderMissionDistance(cachedMission, infoDistance);
+              window.plugin.copyMissions.renderMissionDistance(cachedMission, infoDistance);
             },
             false
           );
@@ -1943,14 +1862,14 @@ function wrapper(plugin_info) {
       container.appendChild(document.createElement('br'));
 
       var infoTime = container.appendChild(document.createElement('span'));
-      infoTime.className = 'plugin-mission-info time help';
+      infoTime.className = 'plugin-copy-mission-info time help';
       infoTime.title = 'Typical duration';
       infoTime.textContent = timeToRemaining((mission.medianCompletionTimeMs / 1000) | 0) + ' ';
       img = infoTime.insertBefore(document.createElement('img'), infoTime.firstChild);
       img.src = 'https://commondatastorage.googleapis.com/ingress.com/img/tm_icons/time.png';
 
       var infoRating = container.appendChild(document.createElement('span'));
-      infoRating.className = 'plugin-mission-info rating help';
+      infoRating.className = 'plugin-copy-mission-info rating help';
       infoRating.title = 'Average rating';
       infoRating.textContent = ((mission.ratingE6 / 100) | 0) / 100 + '%' + ' ';
       img = infoRating.insertBefore(document.createElement('img'), infoRating.firstChild);
@@ -1958,14 +1877,14 @@ function wrapper(plugin_info) {
 
       if (cachedMission) {
         var infoPlayers = container.appendChild(document.createElement('span'));
-        infoPlayers.className = 'plugin-mission-info players help';
+        infoPlayers.className = 'plugin-copy-mission-info players help';
         infoPlayers.title = 'Unique players who have completed this mission';
         infoPlayers.textContent = cachedMission.numUniqueCompletedPlayers + ' ';
         img = infoPlayers.insertBefore(document.createElement('img'), infoPlayers.firstChild);
         img.src = 'https://commondatastorage.googleapis.com/ingress.com/img/tm_icons/players.png';
 
         var infoWaypoints = container.appendChild(document.createElement('span'));
-        infoWaypoints.className = 'plugin-mission-info waypoints help';
+        infoWaypoints.className = 'plugin-copy-mission-info waypoints help';
         infoWaypoints.title =
           (cachedMission.type ? cachedMission.type + ' mission' : 'Unknown mission type') + ' with ' + cachedMission.waypoints.length + ' waypoints';
         infoWaypoints.textContent = cachedMission.waypoints.length + ' ';
@@ -2021,7 +1940,7 @@ function wrapper(plugin_info) {
 
     renderMission: function (mission) {
       var container = document.createElement('div');
-      container.className = 'plugin-mission-details';
+      container.className = 'plugin-copy-mission-details';
 
       var summary = container.appendChild(this.renderMissionSummary(mission));
 
@@ -2039,7 +1958,7 @@ function wrapper(plugin_info) {
 
     renderMissionWaypoint: function (waypoint, index, mission) {
       var container = document.createElement('li');
-      container.className = 'plugin-mission-waypoint';
+      container.className = 'plugin-copy-mission-waypoint';
       let title;
 
       if (waypoint.portal) {
@@ -2102,7 +2021,7 @@ function wrapper(plugin_info) {
       checkbox.addEventListener(
         'change',
         function () {
-          window.plugin.missions.toggleWaypoint(mission.guid, mwpid);
+          window.plugin.copyMissions.toggleWaypoint(mission.guid, mwpid);
         },
         false
       );
@@ -2120,7 +2039,7 @@ function wrapper(plugin_info) {
       var level = resCount === 0 ? 0 : portal.level; // we want neutral portals to be level 0
 
       var container = document.createElement('div');
-      container.className = 'plugin-mission-portal-indicator help ' + team;
+      container.className = 'plugin-copy-mission-portal-indicator help ' + team;
       container.textContent = level;
       container.title = 'Level:\t' + level + '\nResonators:\t' + resCount + '\nHealth:\t' + portal.health + '%';
 
@@ -2140,7 +2059,7 @@ function wrapper(plugin_info) {
         this.checkedWaypoints[mwpid] = true;
       }
 
-      window.runHooks('plugin-missions-waypoint-changed', { mwpid: mwpid, local: true });
+      window.runHooks('plugin-copy-missions-waypoint-changed', { mwpid: mwpid, local: true });
       if (!dontsave) {
         this.checkedWaypointsUpdateQueue[mwpid] = true;
         this.storeLocal('checkedWaypoints');
@@ -2173,7 +2092,7 @@ function wrapper(plugin_info) {
         this.checkedMissions[mid] = true;
       }
 
-      window.runHooks('plugin-missions-mission-changed', { mid: mid, local: true });
+      window.runHooks('plugin-copy-missions-mission-changed', { mid: mid, local: true });
       this.checkedMissionsUpdateQueue[mid] = true;
       this.storeLocal('checkedMissions');
       this.storeLocal('checkedMissionsUpdateQueue');
@@ -2227,23 +2146,33 @@ function wrapper(plugin_info) {
 
     storeCache: function () {
       this.checkCacheSize();
-      localStorage['plugins-missions-portalcache'] = JSON.stringify(this.cacheByPortalGuid);
-      localStorage['plugins-missions-missioncache'] = JSON.stringify(this.cacheByMissionGuid);
+      localStorage['plugins-copy-missions-portalcache'] = JSON.stringify(this.cacheByPortalGuid);
+      localStorage['plugins-copy-missions-missioncache'] = JSON.stringify(this.cacheByMissionGuid);
     },
 
     storeLocal: function (key) {
-      localStorage['plugins-missions-' + key] = JSON.stringify(this[key]);
+      localStorage['plugins-copy-missions-' + key] = JSON.stringify(this[key]);
     },
 
     loadData: function () {
-      this.cacheByPortalGuid = JSON.parse(localStorage['plugins-missions-portalcache'] || '{}');
-      this.cacheByMissionGuid = JSON.parse(localStorage['plugins-missions-missioncache'] || '{}');
+      this.cacheByPortalGuid = JSON.parse(localStorage['plugins-copy-missions-portalcache'] || '{}');
+      this.cacheByMissionGuid = JSON.parse(localStorage['plugins-copy-missions-missioncache'] || '{}');
 
-      if ('plugins-missions-settings' in localStorage) {
-        var settings = JSON.parse(localStorage['plugins-missions-settings'] || '{}');
-        localStorage['plugins-missions-checkedMissions'] = JSON.stringify(settings.checkedMissions);
-        localStorage['plugins-missions-checkedWaypoints'] = JSON.stringify(settings.checkedWaypoints);
-        delete localStorage['plugins-missions-settings'];
+      // 起動時に保存済みミッションキャッシュをFilter ListとMD Listへ取り込む
+      var cachedMissions = Object.keys(this.cacheByMissionGuid).map(function (guid) {
+        var cached = this.cacheByMissionGuid[guid];
+        return cached && cached.data;
+      }, this).filter(function (mission) {
+        return mission && mission.guid;
+      });
+      this.collectAllMissions(cachedMissions);
+      this.collectMdMissions(cachedMissions);
+
+      if ('plugins-copy-missions-settings' in localStorage) {
+        var settings = JSON.parse(localStorage['plugins-copy-missions-settings'] || '{}');
+        localStorage['plugins-copy-missions-checkedMissions'] = JSON.stringify(settings.checkedMissions);
+        localStorage['plugins-copy-missions-checkedWaypoints'] = JSON.stringify(settings.checkedWaypoints);
+        delete localStorage['plugins-copy-missions-settings'];
       }
 
       this.loadLocal('checkedMissions');
@@ -2257,7 +2186,7 @@ function wrapper(plugin_info) {
     },
 
     loadLocal: function (key) {
-      this[key] = JSON.parse(localStorage['plugins-missions-' + key] || '{}');
+      this[key] = JSON.parse(localStorage['plugins-copy-missions-' + key] || '{}');
     },
 
     checkCacheSize: function () {
@@ -2343,7 +2272,7 @@ function wrapper(plugin_info) {
 
     highlightMissionLayers: function (markers) {
       // layer.bringToFront() will break if the layer is not visible
-      var bringToFront = window.map.hasLayer(window.plugin.missions.missionLayer);
+      var bringToFront = window.map.hasLayer(window.plugin.copyMissions.missionLayer);
 
       this.missionLayer.eachLayer(function (layer) {
         var active = markers.indexOf(layer) !== -1;
@@ -2400,13 +2329,13 @@ function wrapper(plugin_info) {
           this.checkedMissionsUpdateQueue = {};
           this.storeLocal('checkedMissionsUpdatingQueue');
           this.storeLocal('checkedMissionsUpdateQueue');
-          window.plugin.sync.updateMap('missions', 'checkedMissions', Object.keys(this.checkedMissionsUpdatingQueue));
+          window.plugin.sync.updateMap('copyMissions', 'checkedMissions', Object.keys(this.checkedMissionsUpdatingQueue));
 
           $.extend(this.checkedWaypointsUpdatingQueue, this.checkedWaypointsUpdateQueue);
           this.checkedWaypointsUpdateQueue = {};
           this.storeLocal('checkedWaypointsUpdatingQueue');
           this.storeLocal('checkedWaypointsUpdateQueue');
-          window.plugin.sync.updateMap('missions', 'checkedWaypoints', Object.keys(this.checkedWaypointsUpdatingQueue));
+          window.plugin.sync.updateMap('copyMissions', 'checkedWaypoints', Object.keys(this.checkedWaypointsUpdatingQueue));
         }.bind(this),
         this.SYNC_DELAY
       );
@@ -2435,9 +2364,9 @@ function wrapper(plugin_info) {
       // fire a complete refresh
       if (fullUpdated) {
         if (fieldName === 'checkedMissions') {
-          window.runHooks('plugin-missions-missions-refreshed');
+          window.runHooks('plugin-copy-missions-missions-refreshed');
         } else if (fieldName === 'checkedWaypoints') {
-          window.runHooks('plugin-missions-waypoints-refreshed');
+          window.runHooks('plugin-copy-missions-waypoints-refreshed');
         }
         return;
       }
@@ -2452,9 +2381,9 @@ function wrapper(plugin_info) {
         this.storeLocal(fieldName + 'UpdateQueue');
 
         if (fieldName === 'checkedMissions') {
-          window.runHooks('plugin-missions-mission-changed', { mid: e.property, local: false });
+          window.runHooks('plugin-copy-missions-mission-changed', { mid: e.property, local: false });
         } else if (fieldName === 'checkedWaypoints') {
-          window.runHooks('plugin-missions-waypoint-changed', { mwpid: e.property, local: false });
+          window.runHooks('plugin-copy-missions-waypoint-changed', { mwpid: e.property, local: false });
         }
       }
     },
@@ -2468,7 +2397,7 @@ function wrapper(plugin_info) {
     },
 
     onPaneChanged: function (pane) {
-      if (pane === 'plugin-missions') {
+      if (pane === 'plugin-copy-missions') {
         document.body.appendChild(this.mobilePane);
       } else if (this.mobilePane.parentNode) {
         this.mobilePane.parentNode.removeChild(this.mobilePane);
@@ -2481,7 +2410,7 @@ function wrapper(plugin_info) {
       // and window not collapsed
       if (this.autoRefreshOnMoveEnd && !this.isShowingPortalList && !this.isMissionListCollapsed) {
         // and if dialog is visible
-        if (window.DIALOGS['dialog-missionsList']) {
+        if (window.DIALOGS['dialog-copyMissionsListFilter']) {
           // then refresh the mission list
           this.openTopMissions();
         }
@@ -2537,7 +2466,7 @@ function wrapper(plugin_info) {
         var result = {
           title: window.escapeHtmlSpecialChars(mission.title),
           description: mission.description
-            ? 'Recently viewed mission: <small class="plugin-mission-search-result-desc">' + window.escapeHtmlSpecialChars(mission.description) + '</small>'
+            ? 'Recently viewed mission: <small class="plugin-copy-mission-search-result-desc">' + window.escapeHtmlSpecialChars(mission.description) + '</small>'
             : 'Mission in view',
           icon: 'https://commondatastorage.googleapis.com/ingress.com/img/tm_icons/tm_cyan.png',
           onSelected: this.onSearchResultSelected.bind(this),
@@ -2576,7 +2505,7 @@ function wrapper(plugin_info) {
       this.loadData();
 
       $('<style>').prop('type', 'text/css').html('\
-.plugin-mission-pane {\
+.plugin-copy-mission-pane {\
 	background: transparent;\
 	border: 0 none !important;\
 	height: 100% !important;\
@@ -2586,18 +2515,18 @@ function wrapper(plugin_info) {
 	position: absolute;\
 	overflow: auto;\
 }\
-.plugin-mission-pane > button {\
+.plugin-copy-mission-pane > button {\
 	padding: 0.3em 2em;\
 }\
 \
-.plugin-mission-summary {\
+.plugin-copy-mission-summary {\
 	padding: 5px;\
 	border-top: black solid 1px;\
 	min-height: 50px;\
 	position: relative;\
 	clear: left;\
 }\
-.plugin-mission-summary.checked::after {\
+.plugin-copy-mission-summary.checked::after {\
 	content: "✓";\
 	display: block;\
 	pointer-events: none;\
@@ -2610,15 +2539,15 @@ function wrapper(plugin_info) {
 	line-height: 50px;\
 	width: 50px;\
 }\
-.plugin-mission-summary:first-child {\
+.plugin-copy-mission-summary:first-child {\
 	border-top-width: 0px;\
 }\
 \
-.plugin-mission-summary.checked {\
+.plugin-copy-mission-summary.checked {\
 	background-color: rgba(255, 187, 0, 0.3);\
 }\
 \
-.plugin-mission-summary > img {\
+.plugin-copy-mission-summary > img {\
 	float: left;\
 	cursor: pointer;\
 	width: 50px;\
@@ -2626,56 +2555,56 @@ function wrapper(plugin_info) {
 	margin-bottom: 5px;\
 }\
 \
-.plugin-mission-summary > a {\
+.plugin-copy-mission-summary > a {\
 	display: block;\
 	font-weight: bold;\
 	font-size: 1.3em;\
 	margin: 0 0 2px 60px;\
 }\
 \
-.plugin-mission-summary > br {\
+.plugin-copy-mission-summary > br {\
 	margin-bottom: 2px;\
 }\
 \
-.plugin-mission-summary > .nickname {\
+.plugin-copy-mission-summary > .nickname {\
 	display: inline-block;\
 	box-sizing: border-box;\
 	min-width: 8em; /* to align with time */\
 	padding-right: 0.2em;\
 }\
 \
-.plugin-mission-info .portal-distance-bearing {\
+.plugin-copy-mission-info .portal-distance-bearing {\
 	font-size: 14px;\
 	margin-right: 8px;\
 	color: #b2fbff;\
 }\
 \
-.plugin-mission-info {\
+.plugin-copy-mission-info {\
 	display: inline-block;\
 }\
-.plugin-mission-info.length   { min-width: 6em; }\
-.plugin-mission-info.distance { min-width: 6em; }\
-.plugin-mission-info.time     { min-width: 8em; }\
-.plugin-mission-info.rating   { min-width: 6em; }\
-.plugin-mission-info.players  { min-width: 4em; }\
-.plugin-mission-info.type     { min-width: 4em; }\
+.plugin-copy-mission-info.length   { min-width: 6em; }\
+.plugin-copy-mission-info.distance { min-width: 6em; }\
+.plugin-copy-mission-info.time     { min-width: 8em; }\
+.plugin-copy-mission-info.rating   { min-width: 6em; }\
+.plugin-copy-mission-info.players  { min-width: 4em; }\
+.plugin-copy-mission-info.type     { min-width: 4em; }\
 \
-.plugin-mission-info img {\
+.plugin-copy-mission-info img {\
 	height: 14px;\
 	margin-right: 8px;\
 	vertical-align: top;\
 }\
-.plugin-mission-info.players img {\
+.plugin-copy-mission-info.players img {\
 	padding: 0 3px; /* the icon is 12x18 */\
 }\
 \
-.plugin-mission-details .plugin-mission-summary > a,\
-.plugin-mission-details .plugin-mission-summary .description {\
+.plugin-copy-mission-details .plugin-copy-mission-summary > a,\
+.plugin-copy-mission-details .plugin-copy-mission-summary .description {\
 	white-space: pre-line;\
 	margin-left: 110px;\
 }\
 \
-.plugin-mission-details .plugin-mission-summary.checked::after {\
+.plugin-copy-mission-details .plugin-copy-mission-summary.checked::after {\
 	left: 0px;\
 	top: 0px;\
 	font-size: 100px;\
@@ -2683,23 +2612,23 @@ function wrapper(plugin_info) {
 	width: 100px;\
 }\
 \
-.plugin-mission-details .plugin-mission-summary {\
+.plugin-copy-mission-details .plugin-copy-mission-summary {\
 	padding: 0;\
 	background-color: transparent;\
 }\
 \
-.plugin-mission-details .plugin-mission-summary > img {\
+.plugin-copy-mission-details .plugin-copy-mission-summary > img {\
 	width: 100px;\
 }\
 \
-.plugin-mission-details ol {\
+.plugin-copy-mission-details ol {\
 	clear: left;\
 	list-style: none;\
 	margin: 10px 0 0;\
 	padding: 0;\
 }\
 \
-.plugin-mission-portal-indicator {\
+.plugin-copy-mission-portal-indicator {\
 	position: relative;\
 	text-align: center;\
 	float: left;\
@@ -2709,7 +2638,7 @@ function wrapper(plugin_info) {
 	margin-right: 5px;\
 }\
 \
-.plugin-mission-portal-indicator div {\
+.plugin-copy-mission-portal-indicator div {\
 	border-color: currentcolor transparent transparent;\
 	border-style: solid;\
 	border-width: 2px 1px;\
@@ -2724,24 +2653,24 @@ function wrapper(plugin_info) {
 	width: 8px;\
 }\
 \
-.plugin-mission-waypoint.unavailable {\
+.plugin-copy-mission-waypoint.unavailable {\
 	text-decoration: line-through;\
 }\
-.plugin-mission-waypoint .title {\
+.plugin-copy-mission-waypoint .title {\
 	font-size: 18px;\
 	font-weight: bold;\
 }\
-.plugin-mission-waypoint label {\
+.plugin-copy-mission-waypoint label {\
 	clear: left;\
 	display: block;\
 }\
-.plugin-mission-waypoint input {\
+.plugin-copy-mission-waypoint input {\
 	box-sizing: border-box;\
 	margin: 3px 5px 8px 0;\
 	width: 18px;\
 }\
 \
-.plugin-mission-search-result-desc {\
+.plugin-copy-mission-search-result-desc {\
 	display: block;\
 	max-height: 2em;\
 	overflow: hidden;\
@@ -2751,16 +2680,16 @@ function wrapper(plugin_info) {
 \
 ').appendTo('head');
       IITC.toolbox.addButton({
-        label: 'Missions in view',
-        action: () => window.plugin.missions.openTopMissions(),
+        label: 'Copy Missions in view',
+        action: () => window.plugin.copyMissions.openTopMissions(),
       });
 
       if (window.useAppPanes()) {
         this.mobilePane = document.createElement('div');
-        this.mobilePane.className = 'plugin-mission-pane';
+        this.mobilePane.className = 'plugin-copy-mission-pane';
 
         var button = this.mobilePane.appendChild(document.createElement('button'));
-        button.textContent = 'Missions in view';
+        button.textContent = 'Copy Missions in view';
         button.addEventListener(
           'click',
           function () {
@@ -2792,7 +2721,7 @@ function wrapper(plugin_info) {
             },
           });
 
-        window.app.addPane('plugin-missions', 'Missions', 'ic_missions');
+        window.app.addPane('plugin-copy-missions', 'Copy Missions', 'ic_missions');
         window.addHook('paneChanged', this.onPaneChanged.bind(this));
       }
 
@@ -2818,28 +2747,28 @@ function wrapper(plugin_info) {
       window.layerChooser.addOverlay(this.missionLayer, 'Mission portals');
 
       // HOOKS:
-      // - plugin-missions-loaded-mission
-      // - plugin-missions-on-portal-loaded
-      // - plugin-missions-mission-changed
-      // - plugin-missions-missions-refreshed
-      // - plugin-missions-waypoint-changed
-      // - plugin-missions-waypoints-refreshed
+      // - plugin-copy-missions-loaded-mission
+      // - plugin-copy-missions-on-portal-loaded
+      // - plugin-copy-missions-mission-changed
+      // - plugin-copy-missions-missions-refreshed
+      // - plugin-copy-missions-waypoint-changed
+      // - plugin-copy-missions-waypoints-refreshed
 
-      window.addHook('plugin-missions-mission-changed', this.onMissionChanged.bind(this));
-      window.addHook('plugin-missions-missions-refreshed', this.onMissionsRefreshed.bind(this));
-      window.addHook('plugin-missions-waypoint-changed', this.onWaypointChanged.bind(this));
-      window.addHook('plugin-missions-waypoints-refreshed', this.onWaypointsRefreshed.bind(this));
+      window.addHook('plugin-copy-missions-mission-changed', this.onMissionChanged.bind(this));
+      window.addHook('plugin-copy-missions-missions-refreshed', this.onMissionsRefreshed.bind(this));
+      window.addHook('plugin-copy-missions-waypoint-changed', this.onWaypointChanged.bind(this));
+      window.addHook('plugin-copy-missions-waypoints-refreshed', this.onWaypointsRefreshed.bind(this));
 
       if (window.plugin.sync) {
-        window.plugin.sync.registerMapForSync('missions', 'checkedMissions', this.syncCallback.bind(this), this.syncInitialed.bind(this));
-        window.plugin.sync.registerMapForSync('missions', 'checkedWaypoints', this.syncCallback.bind(this), this.syncInitialed.bind(this));
+        window.plugin.sync.registerMapForSync('copyMissions', 'checkedMissions', this.syncCallback.bind(this), this.syncInitialed.bind(this));
+        window.plugin.sync.registerMapForSync('copyMissions', 'checkedWaypoints', this.syncCallback.bind(this), this.syncInitialed.bind(this));
       }
 
       setTimeout(this.onIITCLoaded.bind(this));
     },
   };
 
-  var setup = window.plugin.missions.setup.bind(window.plugin.missions);
+  var setup = window.plugin.copyMissions.setup.bind(window.plugin.copyMissions);
   setup.priority = 'low';
 
   setup.info = plugin_info; //add the script info data to the function as a property
