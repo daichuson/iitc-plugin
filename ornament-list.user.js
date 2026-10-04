@@ -120,6 +120,23 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
     return groups;
   }
 
+  function sortGroupsByLongitude(groups) {
+    function meanLongitude(group) {
+      var longitudeSin = 0;
+      var longitudeCos = 0;
+      group.forEach(function (portal) {
+        var longitudeRadians = portal.lng * Math.PI / 180;
+        longitudeSin += Math.sin(longitudeRadians);
+        longitudeCos += Math.cos(longitudeRadians);
+      });
+      return Math.atan2(longitudeSin, longitudeCos) * 180 / Math.PI;
+    }
+    groups.sort(function (a, b) {
+      return meanLongitude(b) - meanLongitude(a);
+    });
+    return groups;
+  }
+
   anomalyIds.forEach(function (id) {
     portalsByOrnament[id] = [];
   });
@@ -160,7 +177,7 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
     content.appendChild(copyAllStatus);
 
     if (GROUP_BY_NEARBY_FIRST) {
-      var nearbyGroups = groupNearbyPortals(allPortals);
+      var nearbyGroups = sortGroupsByLongitude(groupNearbyPortals(allPortals));
       nearbyGroups.forEach(function (group, groupIndex) {
         var groupItem = document.createElement('li');
         var groupTitle = document.createElement('div');
@@ -233,7 +250,7 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
 
       if (portalNames.length) {
         var portalList = document.createElement('ul');
-        var groups = groupNearbyPortals(portalNames);
+        var groups = sortGroupsByLongitude(groupNearbyPortals(portalNames));
         groups.forEach(function (group, groupIndex) {
           var groupItem = document.createElement('li');
           var groupTitle = document.createElement('div');
