@@ -191,7 +191,7 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
       if (portalNames.length) {
         var portalList = document.createElement('ul');
         portalNames.forEach(function (portal) {
-          copyAllLines.push('  - ' + portal.name, '    https://link.ingress.com/portal/' + portal.guid);
+          copyAllLines.push('  - ' + portal.name, 'https://link.ingress.com/portal/' + portal.guid, '');
           var portalItem = document.createElement('li');
           var name = document.createElement('span');
           name.textContent = portal.name + ' ';
