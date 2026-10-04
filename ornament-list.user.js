@@ -44,74 +44,16 @@ var changelog = [
   },
 ];
 
-/** ********************
-// Added as part of the Ingress #Helios in 2014, ornaments
-// are additional image overlays for portals.
-// currently there are 6 known types of ornaments: ap$x$suffix
-// - cluster portals (without suffix)
-// - volatile portals (_v)
-// - meeting points (_start)
-// - finish points (_end)
-//
-// Beacons and Frackers were introduced at the launch of the Ingress
-// ingame store on November 1st, 2015
-// - Beacons (pe$TAG - $NAME) ie: 'peNIA - NIANTIC'
-// - Frackers ('peFRACK')
-// (there are 7 different colors for each of them)
-//
-// Ornament IDs are dynamic. NIANTIC might change them at any time without prior notice.
-// New ornamnent IDs found on the map will be recorded and saved to knownOrnaments from
-// which the Ornaments dialog will be filled with checked checkboxes.
-// To exclude a set of ornaments, even if they have not yet shown up on the map, the user
-// can add an entry to excludedOrnaments, which will compared (startsWith) to all known and
-// future IDs. example: "ap" to exclude all Ornaments for anomalies (ap1, ap2, ap2_v)
-
-      Known ornaments (as of July 2022)
-      // anomaly
-      ap1, ap2, ap3, ap4, ap5, ap6, ap7, ap8, ap9
-      & variations with _v, _end, _start
-      // various beacons
-      peFRACK, peNIA, peNEMESIS, peTOASTY, peFW_ENL, peFW_RES, peBN_BLM
-      // battle beacons
-      peBB_BATTLE_RARE, peBB_BATTLE,
-      // battle winner beacons
-      peBN_ENL_WINNER, peBN_RES_WINNER, peBN_TIED_WINNER,
-      peBN_ENL_WINNER-60, peBN_RES_WINNER-60, peBN_TIED_WINNER-60,
-      // battle rewards CAT 1-6
-      peBR_REWARD-10_125_38, peBR_REWARD-10_150_75, peBR_REWARD-10_175_113,
-      peBR_REWARD-10_200_150, peBR_REWARD-10_225_188, peBR_REWARD-10_250_225,
-      // shards
-      peLOOK
-      // scouting
-      sc5_p        // volatile scouting portal
-      // battle
-      bb_s         // scheduled RareBattleBeacons
-      // various beacons
-      peFRACK      // Fracker beacon
-
-  The icon object holds optional definitions for the ornaments an beacons.
-  'ornamentID' : {
-    name: 'meaningful name',     // shows up in dialog
-    layer: 'name for the Layer', // shows up in layerchooser, optional, if not set
-                                 // ornament will be in "Ornaments"
-    url: 'url',                  // from which the image will be taken, optional,
-                                 // 84x84px is default, if not set, stock images will be
-                                 // used
-    offset: [dx,dy],             // optional, shift the ornament vertically or horizontally by
-                                 // dx*size and dy*size. negative values will shift down
-                                 // and left. [0.5, 0] to place right above the portal.
-                                 // default is [0, 0] (center)
-    opacity: 0..1                // optional, default is 0.6
-  }
-
-**********************/
 
 // use own namespace for plugin
 window.plugin.ornamentIcons = function () {};
 // false にするとモーダルの「Anomaly Portal 1 (ap1) — 1件」見出しを非表示にします。
-window.plugin.ornamentIcons.showAnomalyHeadings = true;
+window.plugin.ornamentIcons.showAnomalyHeadings = false;
 
 window.plugin.ornamentIcons.jsonUrl = 'https://iitc.app/extras/ornaments/definitions.json';
+var NEARBY_DISTANCE_KM = 10;
+// true: 距離を優先してまとめる。false: オーナメント種別ごとにまとめる（従来表示）。
+var GROUP_BY_NEARBY_FIRST = true;
 
 // append or overwrite external definitions
 window.plugin.ornamentIcons.setIcons = function (externalIconDefinitions) {
@@ -140,7 +82,43 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
   }).sort() : [];
   var content = document.createElement('div');
   var portalsByOrnament = {};
+  var allPortals = [];
   var copyAllLines = [];
+  var nearbyCopyTexts = [];
+
+  function distanceKm(a, b) {
+    var toRadians = function (degrees) { return degrees * Math.PI / 180; };
+    var lat1 = toRadians(a.lat);
+    var lat2 = toRadians(b.lat);
+    var deltaLat = lat2 - lat1;
+    var deltaLng = toRadians(b.lng - a.lng);
+    var haversine = Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+      Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLng / 2) * Math.sin(deltaLng / 2);
+    return 6371 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+  }
+
+  // 10km以内のポータルを連結してグループ化します。
+  function groupNearbyPortals(portals) {
+    var remaining = portals.slice();
+    var groups = [];
+    while (remaining.length) {
+      var group = [remaining.shift()];
+      var changed = true;
+      while (changed) {
+        changed = false;
+        for (var i = remaining.length - 1; i >= 0; i--) {
+          if (group.some(function (member) {
+            return distanceKm(member, remaining[i]) <= NEARBY_DISTANCE_KM;
+          })) {
+            group.push(remaining.splice(i, 1)[0]);
+            changed = true;
+          }
+        }
+      }
+      groups.push(group);
+    }
+    return groups;
+  }
 
   anomalyIds.forEach(function (id) {
     portalsByOrnament[id] = [];
@@ -153,7 +131,10 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
 
     data.ornaments.forEach(function (id) {
       if (!portalsByOrnament[id]) return;
-      portalsByOrnament[id].push({ name: data.title || guid, guid: guid });
+      if (typeof data.latE6 !== 'number' || typeof data.lngE6 !== 'number') return;
+      var portalEntry = { name: data.title || guid, guid: guid, lat: data.latE6 / 1e6, lng: data.lngE6 / 1e6, ornamentId: id };
+      portalsByOrnament[id].push(portalEntry);
+      allPortals.push(portalEntry);
     });
   });
 
@@ -178,7 +159,69 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
     copyAllStatus.style.marginLeft = '5px';
     content.appendChild(copyAllStatus);
 
-    anomalyIds.forEach(function (id) {
+    if (GROUP_BY_NEARBY_FIRST) {
+      var nearbyGroups = groupNearbyPortals(allPortals);
+      nearbyGroups.forEach(function (group, groupIndex) {
+        var groupItem = document.createElement('li');
+        var groupTitle = document.createElement('div');
+        var uniquePortalCount = group.reduce(function (count, portal, index) {
+          return count + (group.findIndex(function (entry) { return entry.guid === portal.guid; }) === index ? 1 : 0);
+        }, 0);
+        groupTitle.textContent = '近隣グループ ' + (groupIndex + 1) + '（' + uniquePortalCount + '件）';
+        groupItem.appendChild(groupTitle);
+
+        var byOrnament = {};
+        group.forEach(function (portal) {
+          if (!byOrnament[portal.ornamentId]) byOrnament[portal.ornamentId] = [];
+          byOrnament[portal.ornamentId].push(portal);
+        });
+        var groupLines = [];
+        Object.keys(byOrnament).sort().forEach(function (id) {
+          var ornamentPortals = byOrnament[id];
+          var definition = window.ornaments.icon && window.ornaments.icon[id];
+          var ornamentHeading = document.createElement('div');
+          ornamentHeading.textContent = (definition && definition.name ? definition.name : id) + ' (' + id + ') — ' + ornamentPortals.length + '件';
+          if (window.plugin.ornamentIcons.showAnomalyHeadings) {
+            groupItem.appendChild(ornamentHeading);
+            groupLines.push(ornamentHeading.textContent);
+          }
+          ornamentPortals.forEach(function (portal) {
+            var link = 'https://link.ingress.com/portal/' + portal.guid;
+            copyAllLines.push('  - ' + portal.name, link, '');
+            groupLines.push('  - ' + portal.name, link);
+            var portalItem = document.createElement('div');
+            var name = document.createElement('span');
+            name.textContent = '- ' + portal.name + ' ';
+            portalItem.appendChild(name);
+            var copyButton = document.createElement('button');
+            copyButton.type = 'button';
+            copyButton.className = 'ornament-copy-portal-link';
+            copyButton.dataset.portalName = portal.name;
+            copyButton.dataset.portalGuid = portal.guid;
+            copyButton.textContent = 'Copy PortalLink';
+            portalItem.appendChild(copyButton);
+            var status = document.createElement('span');
+            status.className = 'ornament-copy-portal-status';
+            status.style.marginLeft = '5px';
+            portalItem.appendChild(status);
+            groupItem.appendChild(portalItem);
+          });
+        });
+        var groupCopyIndex = nearbyCopyTexts.length;
+        nearbyCopyTexts.push(groupLines.join('\n'));
+        var groupCopyButton = document.createElement('button');
+        groupCopyButton.type = 'button';
+        groupCopyButton.className = 'ornament-copy-nearby-group';
+        groupCopyButton.dataset.copyIndex = groupCopyIndex;
+        groupCopyButton.textContent = 'この近隣グループをコピー';
+        groupItem.appendChild(groupCopyButton);
+        var groupStatus = document.createElement('span');
+        groupStatus.className = 'ornament-copy-nearby-status';
+        groupStatus.style.marginLeft = '5px';
+        groupItem.appendChild(groupStatus);
+        list.appendChild(groupItem);
+      });
+    } else anomalyIds.forEach(function (id) {
       var item = document.createElement('li');
       var definition = window.ornaments.icon && window.ornaments.icon[id];
       var portalNames = portalsByOrnament[id];
@@ -190,26 +233,51 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
 
       if (portalNames.length) {
         var portalList = document.createElement('ul');
-        portalNames.forEach(function (portal) {
-          copyAllLines.push('  - ' + portal.name, 'https://link.ingress.com/portal/' + portal.guid, '');
-          var portalItem = document.createElement('li');
-          var name = document.createElement('span');
-          name.textContent = portal.name + ' ';
-          portalItem.appendChild(name);
+        var groups = groupNearbyPortals(portalNames);
+        groups.forEach(function (group, groupIndex) {
+          var groupItem = document.createElement('li');
+          var groupTitle = document.createElement('div');
+          groupTitle.textContent = '近隣グループ ' + (groupIndex + 1) + '（' + group.length + '件）';
+          groupItem.appendChild(groupTitle);
 
-          var copyButton = document.createElement('button');
-          copyButton.type = 'button';
-          copyButton.className = 'ornament-copy-portal-link';
-          copyButton.dataset.portalName = portal.name;
-          copyButton.dataset.portalGuid = portal.guid;
-          copyButton.textContent = 'Copy PortalLink';
-          portalItem.appendChild(copyButton);
+          var groupLines = [];
+          group.forEach(function (portal) {
+            var link = 'https://link.ingress.com/portal/' + portal.guid;
+            copyAllLines.push('  - ' + portal.name, link, '');
+            groupLines.push(portal.name, link, '');
+            var portalItem = document.createElement('div');
+            var name = document.createElement('span');
+            name.textContent = portal.name + ' ';
+            portalItem.appendChild(name);
 
-          var status = document.createElement('span');
-          status.className = 'ornament-copy-portal-status';
-          status.style.marginLeft = '5px';
-          portalItem.appendChild(status);
-          portalList.appendChild(portalItem);
+            var copyButton = document.createElement('button');
+            copyButton.type = 'button';
+            copyButton.className = 'ornament-copy-portal-link';
+            copyButton.dataset.portalName = portal.name;
+            copyButton.dataset.portalGuid = portal.guid;
+            copyButton.textContent = 'Copy PortalLink';
+            portalItem.appendChild(copyButton);
+
+            var status = document.createElement('span');
+            status.className = 'ornament-copy-portal-status';
+            status.style.marginLeft = '5px';
+            portalItem.appendChild(status);
+            groupItem.appendChild(portalItem);
+          });
+
+          var groupCopyIndex = nearbyCopyTexts.length;
+          nearbyCopyTexts.push(groupLines.join('\n'));
+          var groupCopyButton = document.createElement('button');
+          groupCopyButton.type = 'button';
+          groupCopyButton.className = 'ornament-copy-nearby-group';
+          groupCopyButton.dataset.copyIndex = groupCopyIndex;
+          groupCopyButton.textContent = 'この近隣グループをコピー';
+          groupItem.appendChild(groupCopyButton);
+          var groupStatus = document.createElement('span');
+          groupStatus.className = 'ornament-copy-nearby-status';
+          groupStatus.style.marginLeft = '5px';
+          groupItem.appendChild(groupStatus);
+          portalList.appendChild(groupItem);
         });
         item.appendChild(portalList);
       } else {
@@ -256,6 +324,20 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
       }
       var copyText = button.dataset.portalName + '\nhttps://link.ingress.com/portal/' + button.dataset.portalGuid;
       navigator.clipboard.writeText(copyText).then(function () {
+        showCopySuccess(status);
+      }, function () {
+        status.textContent = 'コピーに失敗しました';
+      });
+    });
+  });
+  Array.prototype.forEach.call(dialog.querySelectorAll('.ornament-copy-nearby-group'), function (button) {
+    button.addEventListener('click', function () {
+      var status = button.parentNode.querySelector('.ornament-copy-nearby-status');
+      if (!navigator.clipboard || !navigator.clipboard.writeText) {
+        status.textContent = 'クリップボードを利用できません';
+        return;
+      }
+      navigator.clipboard.writeText(nearbyCopyTexts[Number(button.dataset.copyIndex)]).then(function () {
         showCopySuccess(status);
       }, function () {
         status.textContent = 'コピーに失敗しました';
