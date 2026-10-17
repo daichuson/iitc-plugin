@@ -77,12 +77,15 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
     savedDialogPosition = $(existingDialog).dialog('option', 'position');
   }
 
-  var showCopySuccess = function (status) {
-    status.textContent = 'コピーしました';
-    window.clearTimeout(status.copySuccessTimer);
-    status.copySuccessTimer = window.setTimeout(function () {
+  var showTemporaryStatus = function (status, message) {
+    window.clearTimeout(status.ornamentStatusTimer);
+    status.textContent = message;
+    status.ornamentStatusTimer = window.setTimeout(function () {
       status.textContent = '';
     }, 5000);
+  };
+  var showCopySuccess = function (status) {
+    showTemporaryStatus(status, 'コピーしました');
   };
   var knownOrnaments = window.ornaments && window.ornaments.knownOrnaments;
   var anomalyIds = knownOrnaments ? Object.keys(knownOrnaments).filter(function (id) {
@@ -135,11 +138,13 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
         window.portalDetail.request(guid);
       }
       var fragments = detail && detail.artifactDetail && detail.artifactDetail.fragments;
+      var artifactName = detail && detail.artifactDetail && detail.artifactDetail.displayName;
       visibleShardPortals[guid] = {
         guid: guid,
         data: data,
         shardInfo: shardInfo,
         fragments: Array.isArray(fragments) ? fragments : null,
+        artifactName: typeof artifactName === 'string' ? artifactName : null,
         latlng: latlng,
       };
     }
@@ -155,7 +160,29 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
   }
   function shardLabel(portal) {
     if (!portal.fragments || !portal.fragments.length) return '取得中';
-    return portal.fragments.map(function (fragment) { return '#' + fragment; }).join(', ');
+    var fragmentLabels = portal.fragments.map(function (fragment) { return '#' + fragment; }).join(', ');
+    return portal.artifactName ? portal.artifactName + ' ' + fragmentLabels : fragmentLabels;
+  }
+  function createInventoryKeyButton(listType) {
+    var keyButton = document.createElement('button');
+    keyButton.type = 'button';
+    keyButton.className = 'ornament-copy-inventory-keys';
+    keyButton.dataset.listType = listType;
+    keyButton.textContent = '所持キーをまとめてコピー';
+    var keyStatus = document.createElement('span');
+    keyStatus.className = 'ornament-copy-inventory-keys-status';
+    keyStatus.style.marginLeft = '5px';
+    return { button: keyButton, status: keyStatus };
+  }
+  function createPortalDetailsLink(portal) {
+    var link = document.createElement('a');
+    link.href = '#';
+    link.className = 'ornament-portal-details-link';
+    link.dataset.portalGuid = portal.guid;
+    link.dataset.portalLat = portal.lat;
+    link.dataset.portalLng = portal.lng;
+    link.textContent = portal.name;
+    return link;
   }
   if (shardPortals.length) {
     var copyAllShardButton = document.createElement('button');
@@ -170,6 +197,10 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
       copyAllShardStatus.textContent = 'Shard情報を取得中';
     }
     artifactSection.appendChild(copyAllShardStatus);
+    var shardKeyCopy = createInventoryKeyButton('shards');
+    shardKeyCopy.button.style.marginLeft = '8px';
+    artifactSection.appendChild(shardKeyCopy.button);
+    artifactSection.appendChild(shardKeyCopy.status);
 
     var shardList = document.createElement('ul');
     shardPortals.sort(function (a, b) {
@@ -181,7 +212,14 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
       var item = document.createElement('li');
       var portalName = portal.data.title || portal.guid;
       var label = document.createElement('span');
-      label.textContent = shardLabel(portal) + ' : ' + portalName + ' ';
+      label.appendChild(document.createTextNode(shardLabel(portal) + ' : '));
+      label.appendChild(createPortalDetailsLink({
+        name: portalName,
+        guid: portal.guid,
+        lat: portal.latlng.lat,
+        lng: portal.latlng.lng,
+      }));
+      label.appendChild(document.createTextNode(' '));
       item.appendChild(label);
       var copyButton = document.createElement('button');
       copyButton.type = 'button';
@@ -312,6 +350,10 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
       copyAllStatus.className = 'ornament-copy-all-status';
       copyAllStatus.style.marginLeft = '5px';
       ornamentsSection.appendChild(copyAllStatus);
+      var ornamentKeyCopy = createInventoryKeyButton('ornaments');
+      ornamentKeyCopy.button.style.marginLeft = '8px';
+      ornamentsSection.appendChild(ornamentKeyCopy.button);
+      ornamentsSection.appendChild(ornamentKeyCopy.status);
 
     if (GROUP_BY_NEARBY_FIRST) {
       var nearbyGroups = sortGroupsByLongitude(groupNearbyPortals(allPortals));
@@ -344,9 +386,9 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
             copyAllLines.push('  - ' + portal.name, link, '');
             groupLines.push('  - ' + portal.name, link);
             var portalItem = document.createElement('div');
-            var name = document.createElement('span');
-            name.textContent = '- ' + portal.name + ' ';
-            portalItem.appendChild(name);
+            portalItem.appendChild(document.createTextNode('- '));
+            portalItem.appendChild(createPortalDetailsLink(portal));
+            portalItem.appendChild(document.createTextNode(' '));
             var copyButton = document.createElement('button');
             copyButton.type = 'button';
             copyButton.className = 'ornament-copy-portal-link';
@@ -400,9 +442,8 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
             copyAllLines.push('  - ' + portal.name, link, '');
             groupLines.push(portal.name, link, '');
             var portalItem = document.createElement('div');
-            var name = document.createElement('span');
-            name.textContent = portal.name + ' ';
-            portalItem.appendChild(name);
+            portalItem.appendChild(createPortalDetailsLink(portal));
+            portalItem.appendChild(document.createTextNode(' '));
 
             var copyButton = document.createElement('button');
             copyButton.type = 'button';
@@ -473,6 +514,17 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
 
   var dialog = window.DIALOGS && window.DIALOGS['dialog-anomalyOrnaments'];
   if (!dialog) return;
+  Array.prototype.forEach.call(dialog.querySelectorAll('.ornament-portal-details-link'), function (link) {
+    link.addEventListener('click', function (event) {
+      event.preventDefault();
+      if (typeof window.zoomToAndShowPortal === 'function') {
+        window.zoomToAndShowPortal(link.dataset.portalGuid, [
+          Number(link.dataset.portalLat),
+          Number(link.dataset.portalLng),
+        ]);
+      }
+    });
+  });
   if (savedDialogPosition) {
     $(dialog).dialog('option', 'position', savedDialogPosition);
   }
@@ -519,6 +571,50 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
       var copyText = button.dataset.portalName + '\nhttps://link.ingress.com/portal/' + button.dataset.portalGuid;
       navigator.clipboard.writeText(copyText).then(function () {
         showCopySuccess(status);
+      }, function () {
+        status.textContent = 'コピーに失敗しました';
+      });
+    });
+  });
+  Array.prototype.forEach.call(dialog.querySelectorAll('.ornament-copy-inventory-keys'), function (button) {
+    button.addEventListener('click', function () {
+      var status = button.nextElementSibling;
+      var inventory = window.plugin && window.plugin.playerInventory && window.plugin.playerInventory.inventory;
+      var keys = inventory && inventory.keys;
+      if (!keys || typeof keys.get !== 'function') {
+        showTemporaryStatus(status, '所持キーを取得できません（コピー失敗）');
+        return;
+      }
+      if (!navigator.clipboard || !navigator.clipboard.writeText) {
+        status.textContent = 'クリップボードを利用できません';
+        return;
+      }
+      var portalSelector = button.dataset.listType === 'shards'
+        ? '.ornament-copy-shard-portal'
+        : '.ornament-copy-portal-link';
+      var portalButtons = dialog.querySelectorAll(portalSelector);
+      var copyLines = [];
+      var missingKeys = 0;
+      Array.prototype.forEach.call(portalButtons, function (portalButton) {
+        var key = keys.get(portalButton.dataset.portalGuid);
+        if (!key) {
+          missingKeys++;
+          return;
+        }
+        copyLines.push((key.title || portalButton.dataset.portalName) +
+          '\n所持数: ' + key.total +
+          '\nhttps://link.ingress.com/portal/' + key.guid);
+      });
+      if (!copyLines.length) {
+        showTemporaryStatus(status, '該当する所持キーがありません（コピー失敗）');
+        return;
+      }
+      navigator.clipboard.writeText(copyLines.join('\n\n')).then(function () {
+        if (missingKeys) {
+          showTemporaryStatus(status, 'コピーしました（所持キーなし: ' + missingKeys + '件）');
+        } else {
+          showCopySuccess(status);
+        }
       }, function () {
         status.textContent = 'コピーに失敗しました';
       });
@@ -577,6 +673,16 @@ function setup() {
     window.IITC.toolbox.addButton({
       label: 'Anomaly ornaments',
       action: window.plugin.ornamentIcons.showAnomalyList,
+    });
+  }
+
+  if (window.useAppPanes && window.useAppPanes() && window.app && window.app.addPane) {
+    window.app.addPane('plugin-ornament-list', 'Ornaments', 'ic_action_view_as_list');
+    window.addHook('paneChanged', function (pane) {
+      if (pane === 'plugin-ornament-list') {
+        if (window.show) window.show('map');
+        window.plugin.ornamentIcons.showAnomalyList();
+      }
     });
   }
 
