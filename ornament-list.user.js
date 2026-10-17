@@ -48,12 +48,14 @@ var changelog = [
 // use own namespace for plugin
 window.plugin.ornamentIcons = function () {};
 // false にするとモーダルの「Anomaly Portal 1 (ap1) — 1件」見出しを非表示にします。
-window.plugin.ornamentIcons.showAnomalyHeadings = false;
+window.plugin.ornamentIcons.showAnomalyHeadings = true;
 
 window.plugin.ornamentIcons.jsonUrl = 'https://iitc.app/extras/ornaments/definitions.json';
 var NEARBY_DISTANCE_KM = 10;
 // true: 距離を優先してまとめる。false: オーナメント種別ごとにまとめる（従来表示）。
-var GROUP_BY_NEARBY_FIRST = true;
+var GROUP_BY_NEARBY_FIRST = false;
+var artifactListDialogOpen = false;
+var artifactListRefreshPending = false;
 
 // append or overwrite external definitions
 window.plugin.ornamentIcons.setIcons = function (externalIconDefinitions) {
@@ -69,6 +71,12 @@ window.plugin.ornamentIcons.setIcons = function (externalIconDefinitions) {
 };
 
 window.plugin.ornamentIcons.showAnomalyList = function () {
+  var existingDialog = window.DIALOGS && window.DIALOGS['dialog-anomalyOrnaments'];
+  var savedDialogPosition = null;
+  if (existingDialog) {
+    savedDialogPosition = $(existingDialog).dialog('option', 'position');
+  }
+
   var showCopySuccess = function (status) {
     status.textContent = 'コピーしました';
     window.clearTimeout(status.copySuccessTimer);
@@ -85,6 +93,119 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
   var allPortals = [];
   var copyAllLines = [];
   var nearbyCopyTexts = [];
+
+  // 現在の地図表示範囲にあるShardポータルを、IITCのArtifactデータから一覧化します。
+  var artifactSection = document.createElement('section');
+  artifactSection.style.marginBottom = '12px';
+  var artifactHeading = document.createElement('h3');
+  artifactHeading.textContent = 'Artifact (Shard)';
+  artifactSection.appendChild(artifactHeading);
+  var artifact = window.artifact;
+  var artifactPortalInfo = artifact && artifact.portalInfo || {};
+  // Artifact type names change between events (for example, Alpha shards),
+  // so use the current type registry and identify shard records by fragments.
+  var shardTypes = artifact && artifact.artifactTypes
+    ? Object.keys(artifact.artifactTypes)
+    : [];
+  var visibleShardPortals = {};
+  var mapBounds = window.map && window.map.getBounds ? window.map.getBounds() : null;
+
+  Object.keys(artifactPortalInfo).forEach(function (guid) {
+    var info = artifactPortalInfo[guid];
+    var data = info && info._data;
+    if (!data || typeof data.latE6 !== 'number' || typeof data.lngE6 !== 'number') return;
+    var latlng = { lat: data.latE6 / 1e6, lng: data.lngE6 / 1e6 };
+    if (mapBounds && !mapBounds.contains([latlng.lat, latlng.lng])) return;
+
+    var shardInfo = null;
+    shardTypes.some(function (type) {
+      if (!Object.prototype.hasOwnProperty.call(info, type)) return false;
+      // portalInfo is the summary index. Shard records have a truthy
+      // fragments value; detailed fragment numbers come from portalDetail.
+      if (!info[type] || !info[type].fragments) return false;
+      shardInfo = info[type];
+      return true;
+    });
+    if (shardInfo) {
+      var detail = window.portalDetail && window.portalDetail.get ? window.portalDetail.get(guid) : null;
+      // Match the artifact modal: request portal detail when the cached detail
+      // is missing or stale; fragment numbers arrive through portalDetail.
+      if (window.portalDetail && window.portalDetail.request &&
+          (!window.portalDetail.isFresh || !window.portalDetail.isFresh(guid))) {
+        window.portalDetail.request(guid);
+      }
+      var fragments = detail && detail.artifactDetail && detail.artifactDetail.fragments;
+      visibleShardPortals[guid] = {
+        guid: guid,
+        data: data,
+        shardInfo: shardInfo,
+        fragments: Array.isArray(fragments) ? fragments : null,
+        latlng: latlng,
+      };
+    }
+  });
+
+  var shardPortals = Object.keys(visibleShardPortals).map(function (guid) { return visibleShardPortals[guid]; });
+  function firstShardNumber(portal) {
+    if (!portal.fragments || !portal.fragments.length) return Number.POSITIVE_INFINITY;
+    return portal.fragments.reduce(function (smallest, fragment) {
+      var number = Number(fragment);
+      return Number.isFinite(number) && number < smallest ? number : smallest;
+    }, Number.POSITIVE_INFINITY);
+  }
+  function shardLabel(portal) {
+    if (!portal.fragments || !portal.fragments.length) return '取得中';
+    return portal.fragments.map(function (fragment) { return '#' + fragment; }).join(', ');
+  }
+  if (shardPortals.length) {
+    var copyAllShardButton = document.createElement('button');
+    copyAllShardButton.type = 'button';
+    copyAllShardButton.className = 'ornament-copy-all-shards';
+    copyAllShardButton.textContent = 'Shardポータル一覧をコピー';
+    artifactSection.appendChild(copyAllShardButton);
+    var copyAllShardStatus = document.createElement('span');
+    copyAllShardStatus.className = 'ornament-copy-all-shards-status';
+    copyAllShardStatus.style.marginLeft = '5px';
+    if (shardPortals.some(function (portal) { return !portal.fragments || !portal.fragments.length; })) {
+      copyAllShardStatus.textContent = 'Shard情報を取得中';
+    }
+    artifactSection.appendChild(copyAllShardStatus);
+
+    var shardList = document.createElement('ul');
+    shardPortals.sort(function (a, b) {
+      var numberDifference = firstShardNumber(a) - firstShardNumber(b);
+      if (numberDifference) return numberDifference;
+      return String(a.data.title || '').localeCompare(String(b.data.title || ''));
+    });
+    shardPortals.forEach(function (portal) {
+      var item = document.createElement('li');
+      var portalName = portal.data.title || portal.guid;
+      var label = document.createElement('span');
+      label.textContent = shardLabel(portal) + ' : ' + portalName + ' ';
+      item.appendChild(label);
+      var copyButton = document.createElement('button');
+      copyButton.type = 'button';
+      copyButton.className = 'ornament-copy-shard-portal';
+      copyButton.dataset.portalName = portal.data.title || portal.guid;
+      copyButton.dataset.portalGuid = portal.guid;
+      copyButton.dataset.shardLabel = shardLabel(portal);
+      copyButton.textContent = 'Copy PortalLink';
+      item.appendChild(copyButton);
+      var copyStatus = document.createElement('span');
+      copyStatus.className = 'ornament-copy-shard-portal-status';
+      copyStatus.style.marginLeft = '5px';
+      item.appendChild(copyStatus);
+      shardList.appendChild(item);
+    });
+    artifactSection.appendChild(shardList);
+  } else {
+    var noShards = document.createElement('div');
+    noShards.textContent = artifact
+      ? 'Shardポータルはありません。'
+      : 'Artifact情報を取得できません。';
+    artifactSection.appendChild(noShards);
+  }
+  content.appendChild(artifactSection);
 
   function distanceKm(a, b) {
     var toRadians = function (degrees) { return degrees * Math.PI / 180; };
@@ -155,26 +276,42 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
     });
   });
 
+  var ornamentsSection = document.createElement('section');
+  ornamentsSection.style.marginTop = '12px';
+  var ornamentsHeading = document.createElement('h3');
+  ornamentsHeading.textContent = 'Ornaments';
+  ornamentsSection.appendChild(ornamentsHeading);
+
   if (anomalyIds.length === 0) {
-    content.textContent = '取得済みのAnomalyオーナメントはありません。';
+    var noOrnaments = document.createElement('div');
+    noOrnaments.textContent = '該当ポータルなし';
+    ornamentsSection.appendChild(noOrnaments);
+    content.appendChild(ornamentsSection);
   } else {
-    var list = document.createElement('ul');
-    var summary = '';
-    // var summary = '取得済み: ' + anomalyIds.length + '種類（現在読み込まれているポータルから集計）';
-    content.appendChild(document.createTextNode(summary));
-    copyAllLines.push(summary);
+    var totalOrnamentPortals = allPortals.length;
+    if (totalOrnamentPortals === 0) {
+      var noOrnamentPortals = document.createElement('div');
+      noOrnamentPortals.textContent = '該当ポータルなし';
+      ornamentsSection.appendChild(noOrnamentPortals);
+      content.appendChild(ornamentsSection);
+    } else {
+      var list = document.createElement('ul');
+      var summary = '';
+      // var summary = '取得済み: ' + anomalyIds.length + '種類（現在読み込まれているポータルから集計）';
+      ornamentsSection.appendChild(document.createTextNode(summary));
+      copyAllLines.push(summary);
 
-    var copyAllButton = document.createElement('button');
-    copyAllButton.type = 'button';
-    copyAllButton.className = 'ornament-copy-all-list';
-    copyAllButton.textContent = '一覧をコピー';
-    copyAllButton.style.marginLeft = '8px';
-    content.appendChild(copyAllButton);
+      var copyAllButton = document.createElement('button');
+      copyAllButton.type = 'button';
+      copyAllButton.className = 'ornament-copy-all-list';
+      copyAllButton.textContent = '一覧をコピー';
+      copyAllButton.style.marginLeft = '8px';
+      ornamentsSection.appendChild(copyAllButton);
 
-    var copyAllStatus = document.createElement('span');
-    copyAllStatus.className = 'ornament-copy-all-status';
-    copyAllStatus.style.marginLeft = '5px';
-    content.appendChild(copyAllStatus);
+      var copyAllStatus = document.createElement('span');
+      copyAllStatus.className = 'ornament-copy-all-status';
+      copyAllStatus.style.marginLeft = '5px';
+      ornamentsSection.appendChild(copyAllStatus);
 
     if (GROUP_BY_NEARBY_FIRST) {
       var nearbyGroups = sortGroupsByLongitude(groupNearbyPortals(allPortals));
@@ -298,25 +435,47 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
         });
         item.appendChild(portalList);
       } else {
-        copyAllLines.push('  ポータル名を取得できていません（現在読み込まれている範囲に該当ポータルがありません）。');
         var unavailable = document.createElement('div');
-        unavailable.textContent = 'ポータル名を取得できていません（現在読み込まれている範囲に該当ポータルがありません）。';
+        unavailable.textContent = '該当ポータルはありません。';
         item.appendChild(unavailable);
       }
       list.appendChild(item);
     });
-    content.appendChild(list);
+      ornamentsSection.appendChild(list);
+      content.appendChild(ornamentsSection);
+    }
   }
 
+
+  artifactListDialogOpen = true;
   window.dialog({
     id: 'anomalyOrnaments',
     title: '取得済みAnomalyオーナメント',
     html: content.outerHTML,
-    buttons: [{ text: '閉じる', click: function () { $(this).dialog('close'); } }],
+    position: savedDialogPosition || { my: 'center top', at: 'center top+50', of: window, collision: 'fit' },
+    buttons: [
+      {
+        text: '更新',
+        css: { float: 'left', 'margin-right': '2px' },
+        click: function () {
+          window.plugin.ornamentIcons.showAnomalyList();
+        },
+      },
+      {
+        text: '閉じる',
+        click: function () {
+          artifactListDialogOpen = false;
+          $(this).dialog('close');
+        },
+      },
+    ],
   });
 
   var dialog = window.DIALOGS && window.DIALOGS['dialog-anomalyOrnaments'];
   if (!dialog) return;
+  if (savedDialogPosition) {
+    $(dialog).dialog('option', 'position', savedDialogPosition);
+  }
   var copyAllButtonInDialog = dialog.querySelector('.ornament-copy-all-list');
   if (copyAllButtonInDialog) {
     copyAllButtonInDialog.addEventListener('click', function () {
@@ -332,6 +491,39 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
       });
     });
   }
+  var copyAllShardButtonInDialog = dialog.querySelector('.ornament-copy-all-shards');
+  if (copyAllShardButtonInDialog) {
+    copyAllShardButtonInDialog.addEventListener('click', function () {
+      var status = dialog.querySelector('.ornament-copy-all-shards-status');
+      if (!navigator.clipboard || !navigator.clipboard.writeText) {
+        status.textContent = 'クリップボードを利用できません';
+        return;
+      }
+      var lines = Array.prototype.map.call(dialog.querySelectorAll('.ornament-copy-shard-portal'), function (button) {
+        return button.dataset.shardLabel + ' : ' + button.dataset.portalName + '\nhttps://link.ingress.com/portal/' + button.dataset.portalGuid;
+      });
+      navigator.clipboard.writeText(lines.join('\n\n')).then(function () {
+        showCopySuccess(status);
+      }, function () {
+        status.textContent = 'コピーに失敗しました';
+      });
+    });
+  }
+  Array.prototype.forEach.call(dialog.querySelectorAll('.ornament-copy-shard-portal'), function (button) {
+    button.addEventListener('click', function () {
+      var status = button.parentNode.querySelector('.ornament-copy-shard-portal-status');
+      if (!navigator.clipboard || !navigator.clipboard.writeText) {
+        status.textContent = 'クリップボードを利用できません';
+        return;
+      }
+      var copyText = button.dataset.portalName + '\nhttps://link.ingress.com/portal/' + button.dataset.portalGuid;
+      navigator.clipboard.writeText(copyText).then(function () {
+        showCopySuccess(status);
+      }, function () {
+        status.textContent = 'コピーに失敗しました';
+      });
+    });
+  });
   Array.prototype.forEach.call(dialog.querySelectorAll('.ornament-copy-portal-link'), function (button) {
     button.addEventListener('click', function () {
       var status = button.parentNode.querySelector('.ornament-copy-portal-status');
@@ -362,6 +554,23 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
     });
   });
 };
+
+// Artifact portal details arrive asynchronously. Rebuild the open list after
+// each detail load so its Shard numbers and numeric ordering become visible.
+if (window.addHook) {
+  window.addHook('portalDetailLoaded', function () {
+    var openDialog = window.DIALOGS && window.DIALOGS['dialog-anomalyOrnaments'];
+    if (artifactListDialogOpen && (!openDialog || !$(openDialog).dialog('isOpen'))) {
+      artifactListDialogOpen = false;
+    }
+    if (!artifactListDialogOpen || artifactListRefreshPending) return;
+    artifactListRefreshPending = true;
+    window.setTimeout(function () {
+      artifactListRefreshPending = false;
+      if (artifactListDialogOpen) window.plugin.ornamentIcons.showAnomalyList();
+    }, 0);
+  });
+}
 
 function setup() {
   if (window.IITC && window.IITC.toolbox) {
