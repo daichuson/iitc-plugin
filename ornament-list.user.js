@@ -78,10 +78,14 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
   }
 
   var showTemporaryStatus = function (status, message) {
-    window.clearTimeout(status.ornamentStatusTimer);
-    status.textContent = message;
-    status.ornamentStatusTimer = window.setTimeout(function () {
-      status.textContent = '';
+    var section = status;
+    while (section && section.tagName !== 'SECTION') section = section.parentNode;
+    var target = section && section.querySelector('.ornament-section-status');
+    if (!target) target = status;
+    window.clearTimeout(target.ornamentStatusTimer);
+    target.textContent = message;
+    target.ornamentStatusTimer = window.setTimeout(function () {
+      target.textContent = '';
     }, 5000);
   };
   var showCopySuccess = function (status) {
@@ -103,6 +107,9 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
   var artifactHeading = document.createElement('h3');
   artifactHeading.textContent = 'Artifact (Shard)';
   artifactSection.appendChild(artifactHeading);
+  var artifactStatus = document.createElement('div');
+  artifactStatus.className = 'ornament-section-status';
+  artifactSection.appendChild(artifactStatus);
   var artifact = window.artifact;
   var artifactPortalInfo = artifact && artifact.portalInfo || {};
   // Artifact type names change between events (for example, Alpha shards),
@@ -319,6 +326,9 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
   var ornamentsHeading = document.createElement('h3');
   ornamentsHeading.textContent = 'Ornaments';
   ornamentsSection.appendChild(ornamentsHeading);
+  var ornamentsStatus = document.createElement('div');
+  ornamentsStatus.className = 'ornament-section-status';
+  ornamentsSection.appendChild(ornamentsStatus);
 
   if (anomalyIds.length === 0) {
     var noOrnaments = document.createElement('div');
@@ -365,6 +375,23 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
         }, 0);
         groupTitle.textContent = '近隣グループ ' + (groupIndex + 1) + '（' + uniquePortalCount + '件）';
         groupItem.appendChild(groupTitle);
+        var groupCopyIndex = nearbyCopyTexts.length;
+        var groupLines = [];
+        nearbyCopyTexts.push('');
+        var groupCopyButton = document.createElement('button');
+        groupCopyButton.type = 'button';
+        groupCopyButton.className = 'ornament-copy-nearby-group';
+        groupCopyButton.dataset.copyIndex = groupCopyIndex;
+        groupCopyButton.textContent = 'この近隣グループをコピー';
+        groupItem.appendChild(groupCopyButton);
+        var groupStatus = document.createElement('span');
+        groupStatus.className = 'ornament-copy-nearby-status';
+        groupStatus.style.marginLeft = '5px';
+        groupItem.appendChild(groupStatus);
+        var groupKeyCopy = createInventoryKeyButton('nearby-group');
+        groupKeyCopy.button.style.marginLeft = '8px';
+        groupItem.appendChild(groupKeyCopy.button);
+        groupItem.appendChild(groupKeyCopy.status);
 
         var byOrnament = {};
         group.forEach(function (portal) {
@@ -403,18 +430,7 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
             groupItem.appendChild(portalItem);
           });
         });
-        var groupCopyIndex = nearbyCopyTexts.length;
-        nearbyCopyTexts.push(groupLines.join('\n'));
-        var groupCopyButton = document.createElement('button');
-        groupCopyButton.type = 'button';
-        groupCopyButton.className = 'ornament-copy-nearby-group';
-        groupCopyButton.dataset.copyIndex = groupCopyIndex;
-        groupCopyButton.textContent = 'この近隣グループをコピー';
-        groupItem.appendChild(groupCopyButton);
-        var groupStatus = document.createElement('span');
-        groupStatus.className = 'ornament-copy-nearby-status';
-        groupStatus.style.marginLeft = '5px';
-        groupItem.appendChild(groupStatus);
+        nearbyCopyTexts[groupCopyIndex] = groupLines.join('\n');
         list.appendChild(groupItem);
       });
     } else anomalyIds.forEach(function (id) {
@@ -423,24 +439,37 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
       var portalNames = portalsByOrnament[id];
       var heading = document.createElement('div');
       heading.textContent = (definition && definition.name ? definition.name + ' ' : '') + '(' + id + ') — ' + portalNames.length + '件';
-      if (window.plugin.ornamentIcons.showAnomalyHeadings) {
-        item.appendChild(heading);
-      }
+      if (!window.plugin.ornamentIcons.showAnomalyHeadings) heading.textContent = '';
+      item.appendChild(heading);
 
       if (portalNames.length) {
         var portalList = document.createElement('ul');
         var groups = sortGroupsByLongitude(groupNearbyPortals(portalNames));
+        var anomalyGroupCopyIndex = nearbyCopyTexts.length;
+        var anomalyGroupLines = [];
+        nearbyCopyTexts.push('');
+        var anomalyGroupCopyButton = document.createElement('button');
+        anomalyGroupCopyButton.type = 'button';
+        anomalyGroupCopyButton.className = 'ornament-copy-nearby-group';
+        anomalyGroupCopyButton.dataset.copyIndex = anomalyGroupCopyIndex;
+        anomalyGroupCopyButton.textContent = 'グループ';
+        anomalyGroupCopyButton.style.marginLeft = '8px';
+        heading.appendChild(anomalyGroupCopyButton);
+        var anomalyGroupStatus = document.createElement('span');
+        anomalyGroupStatus.className = 'ornament-copy-nearby-status';
+        anomalyGroupStatus.style.marginLeft = '5px';
+        heading.appendChild(anomalyGroupStatus);
+        var anomalyKeyCopy = createInventoryKeyButton('anomaly-group');
+        anomalyKeyCopy.button.textContent = '所持キー';
+        anomalyKeyCopy.button.style.marginLeft = '8px';
+        heading.appendChild(anomalyKeyCopy.button);
+        heading.appendChild(anomalyKeyCopy.status);
         groups.forEach(function (group, groupIndex) {
           var groupItem = document.createElement('li');
-          var groupTitle = document.createElement('div');
-          groupTitle.textContent = '近隣グループ ' + (groupIndex + 1) + '（' + group.length + '件）';
-          groupItem.appendChild(groupTitle);
-
-          var groupLines = [];
           group.forEach(function (portal) {
             var link = 'https://link.ingress.com/portal/' + portal.guid;
             copyAllLines.push('  - ' + portal.name, link, '');
-            groupLines.push(portal.name, link, '');
+            anomalyGroupLines.push(portal.name, link, '');
             var portalItem = document.createElement('div');
             portalItem.appendChild(createPortalDetailsLink(portal));
             portalItem.appendChild(document.createTextNode(' '));
@@ -459,21 +488,9 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
             portalItem.appendChild(status);
             groupItem.appendChild(portalItem);
           });
-
-          var groupCopyIndex = nearbyCopyTexts.length;
-          nearbyCopyTexts.push(groupLines.join('\n'));
-          var groupCopyButton = document.createElement('button');
-          groupCopyButton.type = 'button';
-          groupCopyButton.className = 'ornament-copy-nearby-group';
-          groupCopyButton.dataset.copyIndex = groupCopyIndex;
-          groupCopyButton.textContent = 'この近隣グループをコピー';
-          groupItem.appendChild(groupCopyButton);
-          var groupStatus = document.createElement('span');
-          groupStatus.className = 'ornament-copy-nearby-status';
-          groupStatus.style.marginLeft = '5px';
-          groupItem.appendChild(groupStatus);
           portalList.appendChild(groupItem);
         });
+        nearbyCopyTexts[anomalyGroupCopyIndex] = anomalyGroupLines.join('\n');
         item.appendChild(portalList);
       } else {
         var unavailable = document.createElement('div');
@@ -533,13 +550,13 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
     copyAllButtonInDialog.addEventListener('click', function () {
       var status = dialog.querySelector('.ornament-copy-all-status');
       if (!navigator.clipboard || !navigator.clipboard.writeText) {
-        status.textContent = 'クリップボードを利用できません';
+        showTemporaryStatus(status, 'クリップボードを利用できません');
         return;
       }
       navigator.clipboard.writeText(copyAllLines.join('\n')).then(function () {
         showCopySuccess(status);
       }, function () {
-        status.textContent = 'コピーに失敗しました';
+        showTemporaryStatus(status, 'コピーに失敗しました');
       });
     });
   }
@@ -548,7 +565,7 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
     copyAllShardButtonInDialog.addEventListener('click', function () {
       var status = dialog.querySelector('.ornament-copy-all-shards-status');
       if (!navigator.clipboard || !navigator.clipboard.writeText) {
-        status.textContent = 'クリップボードを利用できません';
+        showTemporaryStatus(status, 'クリップボードを利用できません');
         return;
       }
       var lines = Array.prototype.map.call(dialog.querySelectorAll('.ornament-copy-shard-portal'), function (button) {
@@ -557,7 +574,7 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
       navigator.clipboard.writeText(lines.join('\n\n')).then(function () {
         showCopySuccess(status);
       }, function () {
-        status.textContent = 'コピーに失敗しました';
+        showTemporaryStatus(status, 'コピーに失敗しました');
       });
     });
   }
@@ -565,14 +582,14 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
     button.addEventListener('click', function () {
       var status = button.parentNode.querySelector('.ornament-copy-shard-portal-status');
       if (!navigator.clipboard || !navigator.clipboard.writeText) {
-        status.textContent = 'クリップボードを利用できません';
+        showTemporaryStatus(status, 'クリップボードを利用できません');
         return;
       }
       var copyText = button.dataset.portalName + '\nhttps://link.ingress.com/portal/' + button.dataset.portalGuid;
       navigator.clipboard.writeText(copyText).then(function () {
         showCopySuccess(status);
       }, function () {
-        status.textContent = 'コピーに失敗しました';
+        showTemporaryStatus(status, 'コピーに失敗しました');
       });
     });
   });
@@ -586,13 +603,17 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
         return;
       }
       if (!navigator.clipboard || !navigator.clipboard.writeText) {
-        status.textContent = 'クリップボードを利用できません';
+        showTemporaryStatus(status, 'クリップボードを利用できません');
         return;
       }
       var portalSelector = button.dataset.listType === 'shards'
         ? '.ornament-copy-shard-portal'
         : '.ornament-copy-portal-link';
-      var portalButtons = dialog.querySelectorAll(portalSelector);
+      var portalButtons = button.dataset.listType === 'nearby-group'
+        ? button.parentNode.querySelectorAll(portalSelector)
+        : button.dataset.listType === 'anomaly-group'
+          ? button.parentNode.parentNode.querySelectorAll(portalSelector)
+          : dialog.querySelectorAll(portalSelector);
       var copyLines = [];
       var missingKeys = 0;
       Array.prototype.forEach.call(portalButtons, function (portalButton) {
@@ -616,7 +637,7 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
           showCopySuccess(status);
         }
       }, function () {
-        status.textContent = 'コピーに失敗しました';
+        showTemporaryStatus(status, 'コピーに失敗しました');
       });
     });
   });
@@ -624,14 +645,14 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
     button.addEventListener('click', function () {
       var status = button.parentNode.querySelector('.ornament-copy-portal-status');
       if (!navigator.clipboard || !navigator.clipboard.writeText) {
-        status.textContent = 'クリップボードを利用できません';
+        showTemporaryStatus(status, 'クリップボードを利用できません');
         return;
       }
       var copyText = button.dataset.portalName + '\nhttps://link.ingress.com/portal/' + button.dataset.portalGuid;
       navigator.clipboard.writeText(copyText).then(function () {
         showCopySuccess(status);
       }, function () {
-        status.textContent = 'コピーに失敗しました';
+        showTemporaryStatus(status, 'コピーに失敗しました');
       });
     });
   });
@@ -639,13 +660,13 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
     button.addEventListener('click', function () {
       var status = button.parentNode.querySelector('.ornament-copy-nearby-status');
       if (!navigator.clipboard || !navigator.clipboard.writeText) {
-        status.textContent = 'クリップボードを利用できません';
+        showTemporaryStatus(status, 'クリップボードを利用できません');
         return;
       }
       navigator.clipboard.writeText(nearbyCopyTexts[Number(button.dataset.copyIndex)]).then(function () {
         showCopySuccess(status);
       }, function () {
-        status.textContent = 'コピーに失敗しました';
+        showTemporaryStatus(status, 'コピーに失敗しました');
       });
     });
   });
