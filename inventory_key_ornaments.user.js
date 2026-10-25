@@ -1,9 +1,10 @@
 // ==UserScript==
 // @author         dai02
-// @name           Inventory-KeyPortal
+// @name           inventory key ornaments
 // @category       Info
+// @description    Displays your Ingress inventory, organizes portal keys by capsule, and shows portal ornament details.
 // @version        0.0.3
-// @id             Inventory-KeyPortal
+// @id             inventory key ornaments
 // @match          https://intel.ingress.com/*
 // @match          https://intel-x.ingress.com/*
 // @match          https://*.ingress.com/intel*
@@ -463,6 +464,7 @@ function parseKeyInventory(name, data) {
 }
 
 const KEY_CACHE_KEY = 'plugin-inventory-key-cache';
+const COPY_FLAG = true;
 function saveInventoryKeyCache(inventory, savedAt = Date.now()) {
   const cache = {
     savedAt,
@@ -510,16 +512,25 @@ const SETTINGS_KEY = 'plugin-player-inventory-settings';
 const ORNAMENT_CACHE_KEY = 'plugin-player-inventory-ornaments';
 const DEFAULT_ORNAMENT_CACHE_TTL = 60 * 60 * 1000;
 const ANOMALY_ORNAMENT_CACHE_TTL = 3 * 24 * 60 * 60 * 1000;
-const SCOUT_ORNAMENT_CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
+const PE_ORNAMENT_CACHE_TTL = DEFAULT_ORNAMENT_CACHE_TTL;
+const PE_BB_ORNAMENT_CACHE_TTL = 30 * 60 * 1000;
+const SCOUT_ORNAMENT_CACHE_TTL = 30 * 24 * 60 * 60 * 1000;
 const SCHEDULED_BB_CACHE_TTL = 24 * 60 * 60 * 1000;
 let ornamentCache = {};
 let ornamentCacheExpiryTimer = null;
 
 function getOrnamentCacheTtl(id) {
-  if (id === 'bb_s') return SCHEDULED_BB_CACHE_TTL;
+  if (id === 'bb_s') return getConfiguredOrnamentCacheTtl('scheduledBbOrnamentCacheHours', SCHEDULED_BB_CACHE_TTL);
   if (id === 'sc4_p' || id === 'sc5_p') return SCOUT_ORNAMENT_CACHE_TTL;
-  if (/^ap[1-5](_v)?$/.test(id)) return ANOMALY_ORNAMENT_CACHE_TTL;
+  if (/^peBB/i.test(id)) return PE_BB_ORNAMENT_CACHE_TTL;
+  if (/^ap[1-5](_v)?$/i.test(id)) return getConfiguredOrnamentCacheTtl('anomalyOrnamentCacheHours', ANOMALY_ORNAMENT_CACHE_TTL);
+  if (/^pe/i.test(id)) return getConfiguredOrnamentCacheTtl('peOrnamentCacheHours', PE_ORNAMENT_CACHE_TTL);
   return DEFAULT_ORNAMENT_CACHE_TTL;
+}
+
+function getConfiguredOrnamentCacheTtl(setting, fallback) {
+  const hours = Number(playerInventory.settings && playerInventory.settings[setting]);
+  return Number.isFinite(hours) && hours > 0 ? hours * 60 * 60 * 1000 : fallback;
 }
 
 function persistOrnamentCache() {
@@ -744,61 +755,6 @@ function requestInventory() {
     .then((data) => data.result);
 }
 
-function injectKeys(data) {
-  if (!playerInventory.isHighlighActive) return;
-
-  const bounds = window.map.getBounds();
-  const entities = [];
-  for (const [guid, key] of playerInventory.inventory.keys) {
-    if (bounds.contains(key.latLng)) {
-      // keep known team
-      const team = window.portals[guid] ? window.portals[guid].options.ent[2][1] : 'N';
-      const ent = [guid, 0, ['p', team, Math.round(key.latLng[0] * 1e6), Math.round(key.latLng[1] * 1e6)]];
-      entities.push(ent);
-    }
-  }
-  data.callback(entities);
-}
-
-function portalKeyHighlight(data) {
-  const guid = data.portal.options.guid;
-  if (playerInventory.inventory.keys.has(guid)) {
-    const color = playerInventory.settings.highlightColor;
-    // place holder
-    if (data.portal.options.team !== window.TEAM_NONE && data.portal.options.level === 0) {
-      data.portal.setStyle({
-        color: color,
-        weight: 2 * Math.sqrt(window.portalMarkerScale()),
-        dashArray: '',
-      });
-    } else if (
-      window.map.getZoom() < 15 &&
-      data.portal.options.team === window.TEAM_NONE &&
-      !window.portalDetail.isFresh(guid)
-    )
-      // injected without intel data
-      data.portal.setStyle({ color: color, fillColor: 'gray' });
-    else data.portal.setStyle({ color: color });
-  }
-}
-
-function createPopup(guid) {
-  const portal = window.portals[guid];
-  const latLng = portal.getLatLng();
-  // create popup only if the portal is in view
-  if (window.map.getBounds().contains(latLng)) {
-    const count = playerInventory.inventory.keys.get(guid).count;
-    const text = Array.from(count)
-      .map(([name, count]) => `<strong>${name}</strong>: ${count}`)
-      .join('<br/>');
-
-    L.popup()
-      .setLatLng(latLng)
-      .setContent('<div class="inventory-keys">' + text + '</div>')
-      .openOn(window.map);
-  }
-}
-
 function exportToKeys() {
   if (!window.plugin.keys) return;
   [window.plugin.keys.KEY, window.plugin.keys.UPDATE_QUEUE].forEach(mapping => {
@@ -825,18 +781,10 @@ function localeCompare(a, b) {
 }
 
 function setupCSS() {
-  let colorStyle = '';
-  if (playerInventory.settings.lvlColorEnable) {
-    window.COLORS_LVL.forEach((c, i) => {
-      colorStyle += `.level_L${i}{ color: ${c} }`;
-    });
-    for (const r in window.COLORS_MOD) {
-      colorStyle += `.rarity_${shortenRarity(r)} { color: ${window.COLORS_MOD[r]} }`;
-    }
-  }
   const style = document.head.querySelector('#player-inventory-css') || document.createElement('style');
   style.id = 'player-inventory-css';
-  style.textContent = css_248z + colorStyle + "\n.inventory-box .container { width: 100%; box-sizing: border-box; }\n.inventory-box .ornament-key-groups { width: 100%; max-width: 100%; box-sizing: border-box; }\n.inventory-box .ornament-key-global-summary { margin-bottom: 0.5rem; font-weight: bold; white-space: normal; overflow-wrap: anywhere; }\n.inventory-box .ornament-key-accordion { width: 100%; }\n.inventory-box .ornament-key-controls { display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; margin-bottom: 0.35rem; }\n.inventory-box .ornament-key-capsule-controls { display: grid; grid-template-columns: repeat(auto-fill, minmax(11em, 1fr)); gap: 0.5rem; width: 100%; max-width: 100%; box-sizing: border-box; margin-bottom: 0.4rem; }\n.inventory-box .ornament-key-capsule-controls label { display: inline-flex; align-items: flex-start; white-space: normal; min-width: 0; }\n.inventory-box .ornament-key-capsule-controls input { flex: 0 0 auto; }\n.inventory-box .ornament-key-capsule-label { min-width: 0; overflow-wrap: anywhere; }\n.inventory-box .inventory-capsule-name-table { width: 100%; }\n.inventory-box .inventory-capsule-name-table input[type=text] { box-sizing: border-box; width: 100%; }\n.inventory-box .ornament-key-list { table-layout: fixed; }\n.inventory-box .ornament-key-list tr > :first-child { text-align: right; width: 3em; }\n.inventory-box .ornament-key-list tr > :nth-child(2) { text-align: left; overflow-wrap: anywhere; }\n.inventory-box .ornament-key-list tr > :nth-child(3) { width: 5rem; vertical-align: top; }\n.inventory-box .ornament-key-capsules { opacity: 0.8; font-size: 0.9em; overflow-wrap: anywhere; }\n.inventory-box .ornament-key-list tr > :last-child { text-align: center; white-space: nowrap; width: 4.5em; }\n.inventory-box .ornament-copy-status { margin-left: 0.3rem; }\n.inventory-box .ornament-copy-status-top { min-height: 1.4em; }\n";
+  style.textContent = css_248z + "\n.inventory-box .container { width: 100%; box-sizing: border-box; }\n.inventory-box .ornament-key-groups { width: 100%; max-width: 100%; box-sizing: border-box; }\n.inventory-box .ornament-key-global-summary { margin-bottom: 0.5rem; font-weight: bold; white-space: normal; overflow-wrap: anywhere; }\n.inventory-box .ornament-key-accordion { width: 100%; }\n.inventory-box .ornament-key-controls { display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; margin-bottom: 0.35rem; }\n.inventory-box .ornament-key-capsule-controls { display: grid; grid-template-columns: repeat(auto-fill, minmax(11em, 1fr)); gap: 0.5rem; width: 100%; max-width: 100%; box-sizing: border-box; margin-bottom: 0.4rem; }\n.inventory-box .ornament-key-capsule-controls label { display: inline-flex; align-items: flex-start; white-space: normal; min-width: 0; }\n.inventory-box .ornament-key-capsule-controls input { flex: 0 0 auto; }\n.inventory-box .ornament-key-capsule-label { min-width: 0; overflow-wrap: anywhere; }\n.inventory-box .inventory-capsule-name-table { width: 100%; }\n.inventory-box .inventory-capsule-name-table input[type=text] { box-sizing: border-box; width: 100%; }\n.inventory-box .ornament-key-list { table-layout: fixed; }\n.inventory-box .ornament-key-list tr > :first-child { text-align: right; width: 2.3rem; }\n.inventory-box .ornament-key-list tr > :nth-child(2) { text-align: left; overflow-wrap: anywhere; }\n.inventory-box .ornament-key-list tr > :nth-child(3) { width: 5rem; vertical-align: top; }\n.inventory-box .ornament-key-capsules { opacity: 0.8; font-size: 0.9em; overflow-wrap: anywhere; }\n.inventory-box .ornament-key-list tr > :last-child { text-align: center; white-space: nowrap; width: 4.5em; }\n.inventory-box .ornament-copy-status { margin-left: 0.3rem; }\n.inventory-box .ornament-copy-status-top { min-height: 1.4em; }\n#dialog-inventory-ornament-cache-settings .ornament-cache-settings { display: flex; flex-direction: column; gap: 0.6rem; width: 100%; box-sizing: border-box; }\n#dialog-inventory-ornament-cache-settings .ornament-cache-setting-row { display: grid; grid-template-columns: minmax(0, 1fr) 6em; align-items: center; gap: 0.5rem; width: 100%; box-sizing: border-box; }\n#dialog-inventory-ornament-cache-settings .ornament-cache-setting-row label { min-width: 0; white-space: normal; overflow-wrap: anywhere; }\n#dialog-inventory-ornament-cache-settings .ornament-cache-setting-row input { box-sizing: border-box; width: 100%; }\n";
+  style.textContent += "\n.inventory-box .ornament-artifact-key-section { margin-top: 0.75rem; }\n.inventory-box .ornament-artifact-key-list { width: 100%; table-layout: fixed; }\n.inventory-box .ornament-artifact-key-list tr > :first-child { width: 55%; text-align: left; overflow-wrap: anywhere; }\n.inventory-box .ornament-artifact-key-list tr > :last-child { text-align: left; overflow-wrap: anywhere; }\n.inventory-box .ornament-key-list tr > .ornament-key-load-status { width: 1.25em; min-width: 1.25em; padding-left: 0; padding-right: 0; text-align: center; }\n.inventory-box .ornament-key-list tr > .ornament-key-count { width: 2.3rem; text-align: right; }\n.inventory-box .ornament-key-list-with-load-status tr > :nth-child(2) { width: 2.3rem; text-align: right; }\n.inventory-box .ornament-key-list-with-load-status tr > :nth-child(3) { width: auto; text-align: left; }\n.inventory-box .ornament-key-list-with-load-status:not(.ornament-key-list-with-copy) tr > :nth-child(4) { width: 4.5em; text-align: left; }\n.inventory-box .ornament-key-list-with-load-status.ornament-key-list-with-copy tr > :nth-child(4) { width: 5rem; text-align: left; }\n.inventory-box .ornament-key-list-with-load-status tr > :nth-child(5) { width: 4.5em; text-align: center; }\n";
   document.head.append(style);
 }
 
@@ -1461,9 +1409,82 @@ function hasOrnamentInfo(guid) {
 }
 
 function getOrnamentName(id) {
-  if (id === null) return 'オーナメントなし';
+  if (id === null) return 'オーナメントなし/未取得';
   const definition = window.ornaments && window.ornaments.icon && window.ornaments.icon[id];
   return definition && definition.name ? definition.name : id;
+}
+
+function getPortalArtifactInfo(guid) {
+  const artifact = window.artifact;
+  const artifactInfo = artifact && artifact.portalInfo && artifact.portalInfo[guid];
+  const artifactTypes = artifact && artifact.artifactTypes ? Object.keys(artifact.artifactTypes) : [];
+  const artifacts = artifactInfo ? artifactTypes.filter(type =>
+    Object.prototype.hasOwnProperty.call(artifactInfo, type) && artifactInfo[type]
+  ) : [];
+  if (!artifacts.length) return [];
+
+  const detail = window.portalDetail && window.portalDetail.get ? window.portalDetail.get(guid) : null;
+  if (window.portalDetail && typeof window.portalDetail.request === 'function' &&
+      (!window.portalDetail.isFresh || !window.portalDetail.isFresh(guid))) {
+    window.portalDetail.request(guid);
+  }
+  const artifactDetail = detail && detail.artifactDetail;
+  return artifacts.map(type => ({
+    type,
+    name: artifactDetail && typeof artifactDetail.displayName === 'string' ? artifactDetail.displayName : null,
+    fragments: artifactDetail && Array.isArray(artifactDetail.fragments) ? artifactDetail.fragments : null
+  }));
+}
+
+function buildArtifactKeysSection(inventory) {
+  if (!window.artifact || !window.artifact.portalInfo) return null;
+  const artifactKeys = [...inventory.keys.values()].map(key => ({ key, artifacts: getPortalArtifactInfo(key.guid) }))
+    .filter(entry => entry.artifacts.length);
+  if (!artifactKeys.length) return null;
+  const section = jsx("section", { className: "ornament-artifact-key-section" });
+  section.append(jsx("h3", { children: "Artifact" }));
+  const table = jsx("table", { className: "ornament-artifact-key-list" });
+  table.append(jsx("tr", { children: [jsx("th", { children: "Key名" }), jsx("th", { children: "Artifact情報" })] }));
+  artifactKeys.sort((a, b) => localeCompare(a.key.title, b.key.title));
+  artifactKeys.forEach(({ key, artifacts }) => {
+    const artifactLabels = artifacts.map(item => {
+      const label = item.name || item.type;
+      return item.fragments && item.fragments.length
+        ? `${label} ${item.fragments.map(fragment => `#${fragment}`).join(', ')}`
+        : label;
+    });
+    table.append(jsx("tr", { children: [
+      jsx("td", { children: jsx(PortalKeyLink, { item: key }) }),
+      jsx("td", { children: artifactLabels.join(', ') })
+    ] }));
+  });
+  section.append(table);
+  return section;
+}
+
+function buildBattleBeaconApKeysSection(inventory) {
+  const matchingKeys = [...inventory.keys.values()].filter(key => {
+    const ornaments = getPortalOrnaments(key.guid);
+    return ornaments.some(id => typeof id === 'string' && /^peBB_Battle/i.test(id)) &&
+      ornaments.some(id => typeof id === 'string' && /^ap[1-5](_v)?$/i.test(id));
+  });
+  if (!matchingKeys.length) return null;
+  const section = jsx("section", { className: "ornament-artifact-key-section" });
+  section.append(jsx("h3", { children: "Battle Beacon + AP" }));
+  const table = jsx("table", { className: "ornament-artifact-key-list" });
+  table.append(jsx("tr", { children: [jsx("th", { children: "Key名" }), jsx("th", { children: "Ornaments" })] }));
+  matchingKeys.sort((a, b) => localeCompare(a.title, b.title));
+  matchingKeys.forEach(key => {
+    const ornaments = getPortalOrnaments(key.guid).filter(id =>
+      typeof id === 'string' && (/^peBB_Battle/i.test(id) || /^ap[1-5](_v)?$/i.test(id))
+    );
+    table.append(jsx("tr", { children: [
+      jsx("td", { children: jsx(PortalKeyLink, { item: key }) }),
+      jsx("td", { children: ornaments.map(id => `${getOrnamentName(id)} (${id})`).join(', ') })
+    ] }));
+  });
+  section.append(table);
+  return section;
 }
 
 function getCapsuleDisplayName(name) {
@@ -1473,13 +1494,13 @@ function getCapsuleDisplayName(name) {
 }
 
 function getOrnamentSortOrder(id) {
-  if (id === 'peBB_Battle_VERY_RARE') return [0, 0];
+  // TODO バトルビーコンの名前を調べる
+  if (id === 'peBB_Battle_VERY_RARE' || id === 'peBB_Battle') return [0, 0];
   if (id === 'peBB_Battle_RARE') return [1, 0];
   if (id === 'bb_s') return [2, 0];
   const anomalyMatch = typeof id === 'string' && id.match(/^ap([1-5])(_v)?$/i);
   if (anomalyMatch) return [3 + (Number(anomalyMatch[1]) - 1) * 2, anomalyMatch[2] ? 1 : 0];
   if (typeof id === 'string' && id.startsWith('pe')) return [13, 0];
-  if (id === 'sc4_p' || id === 'sc5_p') return [15, 0];
   if (id === null) return [16, 0];
   return [14, 0];
 }
@@ -1559,10 +1580,20 @@ function OrnamentKeysTable ({ inventory }) {
     const detailProgress = keyPortalDetailRequestActive
       ? ` / 今回の取得予定: 新規${keyPortalDetailExpectedNew}件・対象${keyPortalDetailRequestTotal}件（送信 ${keyPortalDetailRequestSent}/${keyPortalDetailRequestTotal}）`
       : '';
-    globalSummary.textContent = `Keys (Ornaments) — ユニーク: ${filteredGuids.size}件 / 読み込み済み: ${loadedCount}件 / 全体: ${inventory.keys.size}件${detailProgress}`;
+    globalSummary.textContent = `Keys (Ornaments) —  読み込み済み: ${loadedCount}件 / 全体: ${inventory.keys.size}件${detailProgress}`;
   };
 
+  const artifactSection = buildArtifactKeysSection(inventory);
+  const battleBeaconSection = buildBattleBeaconApKeysSection(inventory);
+  if (artifactSection) accordion.append(artifactSection);
+  let specialSectionsInserted = false;
+  const insertSpecialSections = () => {
+    if (specialSectionsInserted) return;
+    if (battleBeaconSection) accordion.append(battleBeaconSection);
+    specialSectionsInserted = true;
+  };
   ornamentIds.forEach(id => {
+    if (id === 'bb_s') insertSpecialSections();
     const keys = groups.get(id).sort((a, b) => localeCompare(a.title, b.title));
     if (!(id in ornamentGroupViewState.open)) ornamentGroupViewState.open[id] = id === ornamentIds[0];
     const isOpen = ornamentGroupViewState.open[id];
@@ -1581,28 +1612,38 @@ function OrnamentKeysTable ({ inventory }) {
       }
     });
     const controls = jsx("div", { className: "ornament-key-controls" });
-    controls.append(copyListButton);
-    const table = jsx("table", { className: "ornament-key-list" });
+    if (COPY_FLAG === true) controls.append(copyListButton);
+    const table = jsx("table", { className: `ornament-key-list${id === null ? ` ornament-key-list-with-load-status${COPY_FLAG === true ? ' ornament-key-list-with-copy' : ''}` : ''}` });
     table.append(jsx("tr", {
-      children: [jsx("th", { children: "個数" }), jsx("th", { children: "Key名" }), jsx("th", { children: "カプセル名" }), jsx("th", { children: "Copy" })]
+      children: [...(id === null ? [jsx("th", { className: "ornament-key-load-status", children: "" })] : []), jsx("th", { children: "個数" }), jsx("th", { children: "Key名" }), jsx("th", { children: "カプセル名" }), ...(COPY_FLAG === true ? [jsx("th", { children: "Copy" })] : [])]
     }));
     keys.forEach(key => {
       const item = jsx("tr", {
         dataset: { portalName: key.title || key.guid, portalGuid: key.guid },
         className: "ornament-key-item"
       });
-      item.append(jsx("td", { children: key.total }));
+      if (id === null) {
+        const ornamentInfoLoaded = hasOrnamentInfo(key.guid);
+        item.append(jsx("td", {
+          className: "ornament-key-load-status",
+          title: ornamentInfoLoaded ? "オーナメント情報を読み込み済み" : "オーナメント情報は未読み込み",
+          children: ornamentInfoLoaded ? "✓" : "□"
+        }));
+      }
+      item.append(jsx("td", { className: "ornament-key-count", children: key.total }));
       const keyCapsuleNames = Array.from(key.count.keys());
       const capsuleNames = keyCapsuleNames.includes('⌂')
         ? ['⌂']
         : keyCapsuleNames.map(getCapsuleDisplayName);
       item.append(jsx("td", { children: jsx(PortalKeyLink, { item: key }) }));
       item.append(jsx("td", { className: "ornament-key-capsules", children: capsuleNames.join(', ') }));
-      item.append(jsx("td", { children: [jsx("button", {
-        type: "button",
-        children: "Copy",
-        onclick: () => copyToClipboard(`${key.title || key.guid}\nhttps://link.ingress.com/portal/${key.guid}`, copyStatus)
-      })] }));
+      if (COPY_FLAG === true) {
+        item.append(jsx("td", { children: [jsx("button", {
+          type: "button",
+          children: "Copy",
+          onclick: () => copyToClipboard(`${key.title || key.guid}\nhttps://link.ingress.com/portal/${key.guid}`, copyStatus)
+        })] }));
+      }
       table.append(item);
     });
     const updateGroupCount = () => {
@@ -1631,6 +1672,7 @@ function OrnamentKeysTable ({ inventory }) {
         : 'キーはありません'
     }));
   }
+  insertSpecialSections();
   content.append(accordion);
   updateGlobalSummary();
   return content;
@@ -1715,17 +1757,6 @@ function Options () {
   const container = jsxs("div", {
     className: "container",
     children: [jsx("label", {
-      htmlFor: "plugin-player-inventory-popup-enable",
-      children: "Keys popup"
-    }), jsx("input", {
-      type: "checkbox",
-      checked: playerInventory.settings.popupEnable,
-      id: "plugin-player-inventory-popup-enable",
-      onchange: ev => {
-        playerInventory.settings.popupEnable = ev.target.checked === 'true' || (ev.target.checked === 'false' ? false : ev.target.checked);
-        storeSettings(playerInventory.settings);
-      }
-    }), jsx("label", {
       htmlFor: "plugin-player-inventory-autorefresh-enable",
       children: "Auto-refresh"
     }), jsx("input", {
@@ -1744,6 +1775,9 @@ function Options () {
     }), jsx("button", {
       onclick: displayNameMapping,
       children: "Set Capsule names"
+    }), jsx("button", {
+      onclick: displayOrnamentCacheSettings,
+      children: "Set Ornament cache period"
     }), window.plugin.keys && jsxs(Fragment, {
       children: [jsx("label", {
         htmlFor: "plugin-player-inventory-autosync-enable",
@@ -1760,40 +1794,6 @@ function Options () {
         onclick: exportToKeys,
         children: "Export to keys plugin"
       })]
-    }), jsx("label", {
-      htmlFor: "plugin-player-inventory-keys-sidebar-enable",
-      children: "Keys in sidebar"
-    }), jsx("input", {
-      type: "checkbox",
-      checked: playerInventory.settings.keysSidebarEnable,
-      id: "plugin-player-inventory-keys-sidebar-enable",
-      onchange: ev => {
-        playerInventory.settings.keysSidebarEnable = ev.target.checked === 'true' || (ev.target.checked === 'false' ? false : ev.target.checked);
-        storeSettings(playerInventory.settings);
-      }
-    }), jsx("label", {
-      htmlFor: "plugin-player-inventory-lvlcolor-enable",
-      children: "Level/rarity colors"
-    }), jsx("input", {
-      type: "checkbox",
-      checked: playerInventory.settings.lvlColorEnable,
-      id: "plugin-player-inventory-keys-lvlcolor-enable",
-      onchange: ev => {
-        playerInventory.settings.lvlColorEnable = ev.target.checked === 'true' || (ev.target.checked === 'false' ? false : ev.target.checked);
-        setupCSS();
-        storeSettings(playerInventory.settings);
-      }
-    }), jsx("label", {
-      children: "Highlighter Color"
-    }), jsx("input", {
-      type: "color",
-      value: playerInventory.settings.highlightColor,
-      onchange: ev => {
-        playerInventory.settings.highlightColor = ev.target.value || '#ff0000';
-        storeSettings(playerInventory.settings);
-        // @ts-ignore
-        window.resetHighlightedPortals();
-      }
     })]
   });
   return container;
@@ -1921,6 +1921,85 @@ function displayOpt() {
     height: 'auto'
   });
 }
+function displayOrnamentCacheSettings() {
+  const settings = playerInventory.settings;
+  const container = jsx("div", { className: "container ornament-cache-settings" });
+  const scheduledBbInput = jsx("input", {
+    type: "number",
+    min: 1,
+    max: 168,
+    step: 1,
+    value: getConfiguredOrnamentCacheTtl('scheduledBbOrnamentCacheHours', SCHEDULED_BB_CACHE_TTL) / (60 * 60 * 1000)
+  });
+  const anomalyInput = jsx("input", {
+    type: "number",
+    min: 1,
+    max: 168,
+    step: 1,
+    value: getConfiguredOrnamentCacheTtl('anomalyOrnamentCacheHours', ANOMALY_ORNAMENT_CACHE_TTL) / (60 * 60 * 1000)
+  });
+  const peInput = jsx("input", {
+    type: "number",
+    min: 1,
+    max: 168,
+    step: 1,
+    value: getConfiguredOrnamentCacheTtl('peOrnamentCacheHours', PE_ORNAMENT_CACHE_TTL) / (60 * 60 * 1000)
+  });
+  container.append(jsx("div", { children: "Cache period: 1–168 hours (1 hour to 1 week)" }));
+  const scheduledBbRow = jsx("div", { className: "ornament-cache-setting-row" });
+  scheduledBbRow.append(jsx("label", { children: "scheduledBB (bb_s)" }), scheduledBbInput);
+  const anomalyRow = jsx("div", { className: "ornament-cache-setting-row" });
+  anomalyRow.append(jsx("label", { children: "Anomaly ornaments (ap1–ap5)" }), anomalyInput);
+  const peRow = jsx("div", { className: "ornament-cache-setting-row" });
+  peRow.append(jsx("label", { children: "Beacon (peTOASTY etc.)" }), peInput);
+  const clearCacheButton = jsx("button", {
+    type: "button",
+    children: "Delete cached ornament data",
+    onclick: () => {
+      if (!window.confirm('保存されているオーナメントキャッシュを削除し、一覧からも取り除きます。よろしいですか？')) return;
+      ornamentCache = {};
+      persistOrnamentCache();
+      clearTimeout(ornamentCacheExpiryTimer);
+      ornamentCacheExpiryTimer = null;
+      refreshOrnamentKeyViews();
+    }
+  });
+  container.append(scheduledBbRow, anomalyRow, peRow, clearCacheButton);
+  window.dialog({
+    title: 'Ornament Cache Period',
+    id: 'inventory-ornament-cache-settings',
+    html: container,
+    width: 'auto',
+    height: 'auto',
+    buttons: [{
+      text: 'Set',
+      click: function () {
+        const anomalyHours = Number(anomalyInput.value);
+        const peHours = Number(peInput.value);
+        const scheduledBbHours = Number(scheduledBbInput.value);
+        if (!Number.isInteger(scheduledBbHours) || scheduledBbHours < 1 || scheduledBbHours > 168 ||
+            !Number.isInteger(anomalyHours) || anomalyHours < 1 || anomalyHours > 168 ||
+            !Number.isInteger(peHours) || peHours < 1 || peHours > 168) {
+          window.alert('Enter a whole number from 1 to 168 hours (1 hour to 1 week).');
+          return;
+        }
+        settings.scheduledBbOrnamentCacheHours = scheduledBbHours;
+        settings.anomalyOrnamentCacheHours = anomalyHours;
+        settings.peOrnamentCacheHours = peHours;
+        storeSettings(settings);
+        pruneOrnamentCache();
+        scheduleOrnamentCacheExpiry();
+        refreshOrnamentKeyViews();
+        $(this).dialog('close');
+      }
+    }, {
+      text: 'Close',
+      click: function () {
+        $(this).dialog('close');
+      }
+    }]
+  });
+}
 function setupDisplay() {
   playerInventory.dialog = null;
   if (window.useAndroidPanes()) {
@@ -1968,31 +2047,25 @@ function setup () {
     playerInventory.lastRefresh = cachedKeyInventory.savedAt;
     pruneOrnamentCacheToInventoryKeys(playerInventory.inventory);
   }
-  playerInventory.isHighlighActive = false;
   if (!cachedKeyInventory) playerInventory.lastRefresh = 0;
   playerInventory.autoRefreshTimer = null;
   playerInventory.settings = {
     autoRefreshActive: false,
-    popupEnable: true,
     autoRefreshDelay: 30,
+    scheduledBbOrnamentCacheHours: SCHEDULED_BB_CACHE_TTL / (60 * 60 * 1000),
+    anomalyOrnamentCacheHours: ANOMALY_ORNAMENT_CACHE_TTL / (60 * 60 * 1000),
+    peOrnamentCacheHours: PE_ORNAMENT_CACHE_TTL / (60 * 60 * 1000),
     autoSyncKeys: false,
-    keysSidebarEnable: false,
     capsuleNameMap: {},
     keyDetailCapsuleDefaults: {},
-    lvlColorEnable: true,
-    highlightColor: '#ff0000'
   };
   $.extend(playerInventory.settings, loadSettings());
+  // Apply persisted cache periods before calculating the next expiration.
+  pruneOrnamentCache();
+  scheduleOrnamentCacheExpiry();
   setupCSS();
   setupDisplay();
   playerInventory.requestInventory = requestInventory;
-  playerInventory.highlighter = {
-    highlight: portalKeyHighlight,
-    setSelected: function (selected) {
-      playerInventory.isHighlighActive = selected;
-    }
-  };
-  window.addPortalHighlighter('Inventory keys', playerInventory.highlighter);
   window.addHook('pluginInventoryRefresh', data => {
     if (playerInventory.settings.autoSyncKeys) {
       exportToKeys();
@@ -2005,43 +2078,6 @@ function setup () {
       fillPane(data.inventory);
       const button = playerInventory.pane.querySelector('button');
       if (button) button.textContent = 'Refresh (' + new Date(playerInventory.lastRefresh).toLocaleTimeString() + ')';
-    }
-  });
-  window.addHook('mapDataEntityInject', injectKeys);
-  window.addHook('portalSelected', data => {
-    // {selectedPortalGuid: guid, unselectedPortalGuid: oldPortalGuid}
-    if (!playerInventory.settings.popupEnable) return;
-    if (data.selectedPortalGuid && data.selectedPortalGuid !== data.unselectedPortalGuid) {
-      const total = playerInventory.inventory.countKey(data.selectedPortalGuid);
-      if (total > 0) {
-        createPopup(data.selectedPortalGuid);
-      }
-    }
-  });
-  window.addHook('portalDetailsUpdated', data => {
-    // {guid: guid, portal: portal, portalDetails: details, portalData: data}
-    if (!playerInventory.settings.keysSidebarEnable) return;
-    const total = playerInventory.inventory.countKey(data.guid);
-    if (total > 0) {
-      const key = playerInventory.inventory.keys.get(data.guid);
-      const mapping = playerInventory.settings.capsuleNameMap;
-      const capsules = Array.from(key.count.keys()).map(name => jsx("div", {
-        title: mapping[name] ? `${mapping[name]} [${name}]` : name,
-        onclick: () => displayInventory(playerInventory.inventory, name),
-        children: mapping[name] ? `${mapping[name]}` : name
-      }));
-      document.getElementById('randdetails').append(jsxs("tr", {
-        className: "inventory-details",
-        children: [jsx("td", {
-          children: total
-        }), jsx("th", {
-          children: "Keys"
-        }), jsx("th", {
-          children: "Capsules"
-        }), jsx("td", {
-          children: capsules
-        })]
-      }));
     }
   });
   window.addHook('portalDetailsUpdated', data => {
