@@ -2,14 +2,15 @@
 // @id             portal-info-to-paste
 // @name           IITC plugin: Portal Info to paste
 // @category       Portal Info
-// @version        1.0.0
+// @version        1.0.1
 // @description    make it easy to copy and paste portal name and intel url
 // @include        https://*.ingress.com/intel*
 // @include        http://*.ingress.com/intel*
+// @match          https://intel.ingress.com/*
+// @match          http://intel.ingress.com/*
+// @match          https://intel-x.ingress.com/*
 // @match          https://*.ingress.com/intel*
 // @match          http://*.ingress.com/intel*
-// @match          https://intel.ingress.com/
-// @match          http://intel.ingress.com/
 // @match          https://*.ingress.com/mission/*
 // @match          http://*.ingress.com/mission/*
 // @grant          none
@@ -40,9 +41,23 @@ function wrapper(plugin_info) {
 
     var copiedtext = name + "\\n" + url;
 
-    // コピーボタン
-    // $('.linkdetails').append("<button onclick='navigator.clipboard.writeText(\"" + copiedtext + "\");document.getElementById(\"message\").textContent=\"コピーしました!\"' >ダイナミックリンクコピー</button><p id='message'></p>");
-    $('.linkdetails').append("<button onclick='navigator.clipboard.writeText(\"" + copiedtext + "\");' >Copy PortalLink</button>");
+    // historydetails の直前にコピーボタンを置く
+    $('#thanks4lmfyp-copy-portal-link').remove();
+    var button = document.createElement('button');
+    button.id = 'thanks4lmfyp-copy-portal-link';
+    button.textContent = 'Copy PortalLink';
+    button.style.display = 'block';
+    button.style.margin = '0 auto';
+    button.style.fontSize = '1.1em';
+    button.onclick = function () {
+      navigator.clipboard.writeText(title + "\n" + url);
+    };
+    var historyDetails = document.getElementById('historydetails');
+    if (historyDetails && historyDetails.parentNode) {
+      historyDetails.parentNode.insertBefore(button, historyDetails);
+    } else {
+      $('.linkdetails').append(button);
+    }
     // テキストボックス
     // $('.linkdetails').append('<textarea id="thanks4lmfyp" name="thanks4lmfyp" onclick="javascript:this.focus();this.select()" >' + copiedtext + '</textarea>');
   }

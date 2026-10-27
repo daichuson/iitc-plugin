@@ -6,11 +6,10 @@
 // @description    スマートフォンのとき、nickname(ユーザー名)をタップするとエージェントのリンクページ(link.ingress.com)に遷移します
 // @id             player-link
 // @match          https://intel.ingress.com/*
+// @match          http://intel.ingress.com/*
 // @match          https://intel-x.ingress.com/*
 // @match          https://*.ingress.com/intel*
 // @match          http://*.ingress.com/intel*
-// @match          https://intel.ingress.com/
-// @match          http://intel.ingress.com/
 // @match          https://*.ingress.com/mission/*
 // @match          http://*.ingress.com/mission/*
 // @grant          none

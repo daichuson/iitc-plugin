@@ -6,11 +6,10 @@
 // @description    Add own icons and names for ornaments
 // @id             ornament-List
 // @match          https://intel.ingress.com/*
+// @match          http://intel.ingress.com/*
 // @match          https://intel-x.ingress.com/*
 // @match          https://*.ingress.com/intel*
 // @match          http://*.ingress.com/intel*
-// @match          https://intel.ingress.com/
-// @match          http://intel.ingress.com/
 // @match          https://*.ingress.com/mission/*
 // @match          http://*.ingress.com/mission/*
 // @grant          none
@@ -100,6 +99,7 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
   var allPortals = [];
   var copyAllLines = [];
   var nearbyCopyTexts = [];
+  var battleCopyLines = [];
 
   // 現在の地図表示範囲にあるShardポータルを、IITCのArtifactデータから一覧化します。
   var artifactSection = document.createElement('section');
@@ -175,7 +175,7 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
     keyButton.type = 'button';
     keyButton.className = 'ornament-copy-inventory-keys';
     keyButton.dataset.listType = listType;
-    keyButton.textContent = '所持キーをまとめてコピー';
+    keyButton.textContent = '所持キーコピー';
     var keyStatus = document.createElement('span');
     keyStatus.className = 'ornament-copy-inventory-keys-status';
     keyStatus.style.marginLeft = '5px';
@@ -319,7 +319,31 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
       portalsByOrnament[id].push(portalEntry);
       allPortals.push(portalEntry);
     });
+    // Battle VERY_RARE / RARE ornaments can appear alongside the six AP
+    // ornaments. Include only AP ornament entries from those same portals.
+    if (data.ornaments.indexOf('peBB_Battle_VERY_RARE') !== -1 ||
+        data.ornaments.indexOf('peBB_Battle_RARE') !== -1) {
+      data.ornaments.forEach(function (id) {
+        if (!/^ap[123](?:_v)?$/.test(id)) return;
+        if (typeof data.latE6 !== 'number' || typeof data.lngE6 !== 'number') return;
+        battleCopyLines.push({
+          name: data.title || guid,
+          guid: guid,
+          ornamentId: id,
+        });
+      });
+    }
   });
+
+  var inventoryKeys = window.plugin && window.plugin.playerInventory &&
+    window.plugin.playerInventory.inventory && window.plugin.playerInventory.inventory.keys;
+  if (inventoryKeys && typeof inventoryKeys.get === 'function') {
+    battleCopyLines = battleCopyLines.filter(function (portal) {
+      return !!inventoryKeys.get(portal.guid);
+    });
+  } else {
+    battleCopyLines = [];
+  }
 
   var ornamentsSection = document.createElement('section');
   ornamentsSection.style.marginTop = '12px';
@@ -364,6 +388,18 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
       ornamentKeyCopy.button.style.marginLeft = '8px';
       ornamentsSection.appendChild(ornamentKeyCopy.button);
       ornamentsSection.appendChild(ornamentKeyCopy.status);
+      if (battleCopyLines.length) {
+        var battleCopyButton = document.createElement('button');
+        battleCopyButton.type = 'button';
+        battleCopyButton.className = 'ornament-copy-battle-ap';
+        battleCopyButton.textContent = 'Battle付きコピー';
+        battleCopyButton.style.marginLeft = '8px';
+        ornamentsSection.appendChild(battleCopyButton);
+        var battleCopyStatus = document.createElement('span');
+        battleCopyStatus.className = 'ornament-copy-battle-ap-status';
+        battleCopyStatus.style.marginLeft = '5px';
+        ornamentsSection.appendChild(battleCopyStatus);
+      }
 
     if (GROUP_BY_NEARBY_FIRST) {
       var nearbyGroups = sortGroupsByLongitude(groupNearbyPortals(allPortals));
@@ -554,6 +590,27 @@ window.plugin.ornamentIcons.showAnomalyList = function () {
         return;
       }
       navigator.clipboard.writeText(copyAllLines.join('\n')).then(function () {
+        showCopySuccess(status);
+      }, function () {
+        showTemporaryStatus(status, 'コピーに失敗しました');
+      });
+    });
+  }
+  var battleCopyButtonInDialog = dialog.querySelector('.ornament-copy-battle-ap');
+  if (battleCopyButtonInDialog) {
+    battleCopyButtonInDialog.addEventListener('click', function () {
+      var status = dialog.querySelector('.ornament-copy-battle-ap-status');
+      if (!navigator.clipboard || !navigator.clipboard.writeText) {
+        showTemporaryStatus(status, 'クリップボードを利用できません');
+        return;
+      }
+      var lines = battleCopyLines.map(function (portal) {
+        var definition = window.ornaments.icon && window.ornaments.icon[portal.ornamentId];
+        var ornamentName = definition && definition.name ? definition.name : portal.ornamentId;
+        return ornamentName + ' (' + portal.ornamentId + ') : ' + portal.name +
+          '\nhttps://link.ingress.com/portal/' + portal.guid;
+      });
+      navigator.clipboard.writeText(lines.join('\n\n')).then(function () {
         showCopySuccess(status);
       }, function () {
         showTemporaryStatus(status, 'コピーに失敗しました');

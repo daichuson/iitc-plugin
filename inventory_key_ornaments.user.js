@@ -6,11 +6,10 @@
 // @version        0.0.3
 // @id             inventory key ornaments
 // @match          https://intel.ingress.com/*
+// @match          http://intel.ingress.com/*
 // @match          https://intel-x.ingress.com/*
 // @match          https://*.ingress.com/intel*
 // @match          http://*.ingress.com/intel*
-// @match          https://intel.ingress.com/
-// @match          http://intel.ingress.com/
 // @match          https://*.ingress.com/mission/*
 // @match          http://*.ingress.com/mission/*
 // @grant          none
