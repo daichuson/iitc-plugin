@@ -1493,15 +1493,15 @@ function getCapsuleDisplayName(name) {
 }
 
 function getOrnamentSortOrder(id) {
-  // TODO バトルビーコンの名前を調べる
-  if (id === 'peBB_Battle_VERY_RARE' || id === 'peBB_Battle') return [0, 0];
-  if (id === 'peBB_Battle_RARE') return [1, 0];
-  if (id === 'bb_s') return [2, 0];
+  if (id === 'bb_s') return [0, 0];
+  if (typeof id === 'string' && /^peBB/i.test(id)) return [1, 0];
   const anomalyMatch = typeof id === 'string' && id.match(/^ap([1-5])(_v)?$/i);
-  if (anomalyMatch) return [3 + (Number(anomalyMatch[1]) - 1) * 2, anomalyMatch[2] ? 1 : 0];
-  if (typeof id === 'string' && id.startsWith('pe')) return [13, 0];
+  if (anomalyMatch) return [2 + (Number(anomalyMatch[1]) - 1) * 2, anomalyMatch[2] ? 1 : 0];
+  if (typeof id === 'string' && /^peBR/i.test(id)) return [12, 0];
+  if (typeof id === 'string' && /^peBN/i.test(id)) return [13, 0];
+  if (typeof id === 'string' && /^pe/i.test(id)) return [14, 0];
   if (id === null) return [16, 0];
-  return [14, 0];
+  return [15, 0];
 }
 
 function OrnamentKeysTable ({ inventory }) {
