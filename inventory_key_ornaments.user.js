@@ -5,13 +5,9 @@
 // @description    Displays your Ingress inventory, organizes portal keys by capsule, and shows portal ornament details.
 // @version        0.0.3
 // @id             inventory key ornaments
-// @match          https://intel.ingress.com/*
-// @match          http://intel.ingress.com/*
+// @match          https://*.ingress.com/*
+// @match          http://*.ingress.com/*
 // @match          https://intel-x.ingress.com/*
-// @match          https://*.ingress.com/intel*
-// @match          http://*.ingress.com/intel*
-// @match          https://*.ingress.com/mission/*
-// @match          http://*.ingress.com/mission/*
 // @grant          none
 // ==/UserScript==
 
@@ -1777,6 +1773,10 @@ function Options () {
     }), jsx("button", {
       onclick: displayOrnamentCacheSettings,
       children: "Set Ornament cache period"
+    }), jsx("button", {
+      type: "button",
+      onclick: clearScheduledBbOrnamentCache,
+      children: "Clear scheduled_BB ornament cache"
     }), window.plugin.keys && jsxs(Fragment, {
       children: [jsx("label", {
         htmlFor: "plugin-player-inventory-autosync-enable",
@@ -1797,6 +1797,37 @@ function Options () {
   });
   return container;
 }
+
+function clearScheduledBbOrnamentCache() {
+  const scheduledBbGuids = Object.keys(ornamentCache).filter(guid => {
+    const entry = ornamentCache[guid];
+    if (!entry || !Array.isArray(entry.ornaments)) return false;
+    return entry.ornaments.some(ornament =>
+      (typeof ornament === 'string' ? ornament : ornament && ornament.id) === 'bb_s'
+    );
+  });
+  if (!scheduledBbGuids.length) {
+    window.alert('scheduled_BB のキャッシュはありません。');
+    return;
+  }
+  if (!window.confirm(`scheduled_BB のキャッシュ ${scheduledBbGuids.length}件を一覧から取り除き、scheduled_BB 以外のオーナメント情報は保持します。よろしいですか？`)) return;
+  for (const guid of scheduledBbGuids) {
+    const entry = ornamentCache[guid];
+    const remaining = entry.ornaments.filter(ornament =>
+      (typeof ornament === 'string' ? ornament : ornament && ornament.id) !== 'bb_s'
+    );
+    if (remaining.length) {
+      ornamentCache[guid] = { ...entry, ornaments: remaining };
+    } else {
+      // With no cached ornaments left, the key returns to the uncached group.
+      delete ornamentCache[guid];
+    }
+  }
+  persistOrnamentCache();
+  scheduleOrnamentCacheExpiry();
+  refreshOrnamentKeyViews();
+}
+
 function displayNameMapping() {
   const capsules = playerInventory.inventory.capsules;
   const mapping = { ...playerInventory.settings.capsuleNameMap };
