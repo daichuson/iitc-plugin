@@ -172,6 +172,11 @@ function wrapper(plugin_info) {
   };
 
   window.plugin.copyMissions = {
+    missionCacheDays: 3,
+    portalMissionsCacheDays: 21,
+    allowStartPortalMissionList: false,
+    reusePortalMissionsWithinSession: false,
+    sessionLoadedPortalGuids: {},
     // 3 days.
     missionCacheTime: 3 * 24 * 3600 * 1e3,
     // 3 weeks.
@@ -182,6 +187,7 @@ function wrapper(plugin_info) {
     MISSION_COLOR_START: '#A6A600',
 
     SYNC_DELAY: 5000,
+    START_PORTAL_LOAD_INTERVAL: 500,
     enableSync: false,
 
     // 「MD 2024」「MD2024」「MD [場所名]2024」のような表記にマッチ（前後が英字/数字でないこと）
@@ -241,6 +247,7 @@ function wrapper(plugin_info) {
     ],
 
     onPortalDetailsUpdated: function (data) {
+      if (!this.allowStartPortalMissionList) return;
       if (!data.portalDetails.mission && !data.portalDetails.mission50plus) {
         return;
       }
@@ -252,10 +259,96 @@ function wrapper(plugin_info) {
 
     openTopMissions: function (bounds) {
       bounds = bounds || window.map.getBounds();
+      if (this.allowStartPortalMissionList) {
+        // Open the list first; start portal results are appended as each request finishes.
+        this.showMissionListDialog([], 'Mission start portals', true);
+        this.loadMissionsFromStartPortals(bounds);
+        return;
+      }
       this.loadMissionsInBounds(bounds, this.showMissionListDialog.bind(this));
     },
 
+    showOptionsDialog: function () {
+      var self = this;
+      var content = document.createElement('div');
+      content.className = 'plugin-copy-missions-options';
+      content.style.display = 'grid';
+      content.style.gridTemplateColumns = '1fr 6em';
+      content.style.alignItems = 'center';
+      content.style.gap = '8px';
+
+      var allowStartLabel = content.appendChild(document.createElement('label'));
+      allowStartLabel.style.gridColumn = '1 / -1';
+      var allowStartInput = allowStartLabel.appendChild(document.createElement('input'));
+      allowStartInput.type = 'checkbox';
+      allowStartInput.checked = this.allowStartPortalMissionList;
+      allowStartLabel.appendChild(document.createTextNode('Allow opening mission lists from start portals'));
+
+      var sessionCacheLabel = content.appendChild(document.createElement('label'));
+      sessionCacheLabel.style.gridColumn = '1 / -1';
+      var sessionCacheInput = sessionCacheLabel.appendChild(document.createElement('input'));
+      sessionCacheInput.type = 'checkbox';
+      sessionCacheInput.checked = this.reusePortalMissionsWithinSession;
+      sessionCacheLabel.appendChild(document.createTextNode('Reuse portal mission lists within this session'));
+
+      var missionLabel = content.appendChild(document.createElement('label'));
+      missionLabel.textContent = 'Mission detail cache (days)';
+      var missionInput = content.appendChild(document.createElement('input'));
+      missionInput.type = 'number';
+      missionInput.min = '1';
+      missionInput.max = '30';
+      missionInput.step = '1';
+      missionInput.value = this.missionCacheDays;
+
+      var portalLabel = content.appendChild(document.createElement('label'));
+      portalLabel.textContent = 'Portal mission list cache (days)';
+      var portalInput = content.appendChild(document.createElement('input'));
+      portalInput.type = 'number';
+      portalInput.min = '1';
+      portalInput.max = '30';
+      portalInput.step = '1';
+      portalInput.value = this.portalMissionsCacheDays;
+
+      window.dialog({
+        id: 'dialog-copyMissionsOptions',
+        title: 'Copy Missions Options',
+        html: content,
+        buttons: {
+          Save: function () {
+            var missionDays = Number(missionInput.value);
+            var portalDays = Number(portalInput.value);
+            if (!Number.isInteger(missionDays) || missionDays < 1 || missionDays > 30) {
+              missionInput.focus();
+              return;
+            }
+            if (!Number.isInteger(portalDays) || portalDays < 1 || portalDays > 30) {
+              portalInput.focus();
+              return;
+            }
+
+            self.missionCacheDays = missionDays;
+            self.portalMissionsCacheDays = portalDays;
+            self.allowStartPortalMissionList = allowStartInput.checked;
+            self.reusePortalMissionsWithinSession = sessionCacheInput.checked;
+            self.missionCacheTime = missionDays * 24 * 3600 * 1e3;
+            self.portalMissionsCacheTime = portalDays * 24 * 3600 * 1e3;
+            localStorage['plugins-copy-missions-options'] = JSON.stringify({
+              missionCacheDays: missionDays,
+              portalMissionsCacheDays: portalDays,
+              allowStartPortalMissionList: self.allowStartPortalMissionList,
+              reusePortalMissionsWithinSession: self.reusePortalMissionsWithinSession,
+            });
+            $(this).dialog('close');
+          },
+          Cancel: function () {
+            $(this).dialog('close');
+          },
+        },
+      });
+    },
+
     openPortalMissions: function () {
+      if (!this.allowStartPortalMissionList) return;
       let selectedPortalGuid = window.selectedPortal;
 
       this.loadPortalMissions(
@@ -265,14 +358,155 @@ function wrapper(plugin_info) {
             return;
           }
 
+          let selectedPortal = window.portals[selectedPortalGuid];
+          let portalTitle = selectedPortal ? selectedPortal.options.data.title : '';
+          this.showMissionListDialog(missions, 'Copy Missions at ' + portalTitle, true);
           if (missions.length === 1) {
             this.loadMission(missions[0].guid, this.showMissionDialog.bind(this));
-          } else {
-            let selectedPortal = window.portals[selectedPortalGuid];
-            this.showMissionListDialog(missions, 'Copy Missions at ' + selectedPortal.options.data.title, true);
           }
         }.bind(this)
       );
+    },
+
+    // 現在の表示範囲にある、Mission start portals の目印対象を列挙する。
+    getMissionStartPortalsInBounds: function (bounds) {
+      bounds = bounds || window.map.getBounds();
+      var portals = [];
+
+      Object.keys(window.portals || {}).forEach(function (guid) {
+        var portal = window.portals[guid];
+        var data = portal && portal.options && portal.options.data;
+        if (!data || (!data.mission && !data.mission50plus)) return;
+
+        var latlng = portal.getLatLng();
+        if (!bounds.contains(latlng)) return;
+
+        portals.push({
+          guid: guid,
+          lat: latlng.lat,
+          lng: latlng.lng,
+          title: data.title,
+        });
+      });
+
+      return portals;
+    },
+
+    loadMissionsFromStartPortals: function (bounds) {
+      if (!this.allowStartPortalMissionList || this.isLoadingStartPortalMissions) return;
+
+      var self = this;
+      bounds = bounds || window.map.getBounds();
+      var startPortals = this.getMissionStartPortalsInBounds(bounds);
+      this.startPortalScanId = (this.startPortalScanId || 0) + 1;
+      this.startPortalScanActive = true;
+      this.startPortalScanBounds = bounds;
+      this.startPortalScanGuids = {};
+      this.startPortalMissionQueue = [];
+      this.sessionStartPortalGuids = this.sessionStartPortalGuids || {};
+      this.processedStartPortalGuids = this.processedStartPortalGuids || {};
+      this.startPortalProgress = {
+        total: Object.keys(this.sessionStartPortalGuids).length,
+        completed: Object.keys(this.processedStartPortalGuids).length,
+      };
+      this.refreshFilterMissionDialog(false);
+      startPortals.forEach(function (portal) {
+        self.queueStartPortalForScan(portal);
+      });
+
+      if (!startPortals.length) {
+        this.loadMissionsInBounds(
+          bounds,
+          function (missions) {
+            var mdAdded = self.collectMdMissions(missions);
+            self.collectAllMissions(missions);
+            if (mdAdded) self.refreshMdMissionDialog();
+            self.refreshFilterMissionDialog(false);
+          },
+          function () {
+            self.refreshFilterMissionDialog(false);
+          }
+        );
+      }
+    },
+
+    queueStartPortalForScan: function (portal) {
+      if (!this.startPortalScanActive || !portal || !portal.guid || this.startPortalScanGuids[portal.guid]) return;
+      var data = portal.options && portal.options.data;
+      // Initial scan entries are lightweight {guid, lat, lng, title} records;
+      // portalAdded hooks pass full IITC portal objects.
+      if (data && !data.mission && !data.mission50plus) return;
+      var latlng = typeof portal.getLatLng === 'function' ? portal.getLatLng() : { lat: portal.lat, lng: portal.lng };
+      if (!Number.isFinite(latlng.lat) || !Number.isFinite(latlng.lng)) return;
+      if (!this.startPortalScanBounds.contains(latlng)) return;
+
+      this.startPortalScanGuids[portal.guid] = true;
+      this.sessionStartPortalGuids = this.sessionStartPortalGuids || {};
+      this.processedStartPortalGuids = this.processedStartPortalGuids || {};
+      this.sessionStartPortalGuids[portal.guid] = true;
+      this.startPortalProgress.total = Object.keys(this.sessionStartPortalGuids).length;
+      this.startPortalProgress.completed = Object.keys(this.processedStartPortalGuids).length;
+      if (this.processedStartPortalGuids[portal.guid]) {
+        this.refreshFilterMissionDialog(false);
+        return;
+      }
+
+      this.startPortalMissionQueue.push({ guid: portal.guid, scanId: this.startPortalScanId });
+      this.refreshFilterMissionDialog(false);
+      this.processNextStartPortal();
+    },
+
+    processNextStartPortal: function () {
+      if (!this.startPortalScanActive || this.isLoadingStartPortalMissions || !this.startPortalMissionQueue.length) return;
+
+      var self = this;
+      var portal = this.startPortalMissionQueue.shift();
+      this.isLoadingStartPortalMissions = true;
+      var finishPortal = function (missions) {
+        if (!self.startPortalScanActive || portal.scanId !== self.startPortalScanId) return;
+        if (missions) {
+          var mdAdded = self.collectMdMissions(missions);
+          self.collectAllMissions(missions);
+          self.processedStartPortalGuids[portal.guid] = true;
+          self.startPortalProgress.completed = Object.keys(self.processedStartPortalGuids).length;
+          if (mdAdded) self.refreshMdMissionDialog();
+        }
+        self.refreshFilterMissionDialog(false);
+        self.startPortalLoadTimer = setTimeout(function () {
+          if (portal.scanId !== self.startPortalScanId) return;
+          self.isLoadingStartPortalMissions = false;
+          self.processNextStartPortal();
+        }, self.START_PORTAL_LOAD_INTERVAL);
+      };
+
+      this.loadPortalMissions(portal.guid, finishPortal, function () {
+        // Keep processing the queue if an individual portal request fails.
+        finishPortal(null);
+      });
+    },
+
+    stopStartPortalScan: function () {
+      this.startPortalScanId = (this.startPortalScanId || 0) + 1;
+      this.startPortalScanActive = false;
+      this.startPortalMissionQueue = [];
+      this.isLoadingStartPortalMissions = false;
+      clearTimeout(this.startPortalLoadTimer);
+    },
+
+    updateStartPortalScanBounds: function (bounds) {
+      if (!this.startPortalScanActive) return;
+      this.startPortalScanBounds = bounds || window.map.getBounds();
+      this.getMissionStartPortalsInBounds(this.startPortalScanBounds).forEach(function (portal) {
+        this.queueStartPortalForScan(portal);
+      }, this);
+      this.refreshFilterMissionDialog(false);
+    },
+
+    addMissionsToFilterList: function (missions) {
+      var mdAdded = this.collectMdMissions(missions);
+      this.collectAllMissions(missions);
+      if (mdAdded) this.refreshMdMissionDialog();
+      this.refreshFilterMissionDialog(false);
     },
 
     openMission: function (guid) {
@@ -398,6 +632,8 @@ function wrapper(plugin_info) {
     },
 
     showMissionListDialog: function (missions, caption, isPortalList) {
+      if (this.startPortalScanActive) this.stopStartPortalScan();
+      this.startPortalProgress = null;
       this.isShowingPortalList = isPortalList;
       this.currentListMissions = missions;
       this.currentListCaption = 'Filter List';
@@ -844,6 +1080,9 @@ function wrapper(plugin_info) {
           width: '400px',
           title: 'Copy Filter List',
           position: topPosition,
+          closeCallback: function () {
+            self.stopStartPortalScan();
+          },
           buttons: [
             {
               text: 'Clear',
@@ -998,7 +1237,12 @@ function wrapper(plugin_info) {
         listBox.textContent = '該当するミッションがありません';
       }
 
-      $(openDialog).dialog({ title: 'Copy Filter List (' + missions.length + '/' + all.length + ')' });
+      var title = 'Copy Filter List (' + missions.length + '/' + all.length + ')';
+      if (this.startPortalProgress) {
+        var remainingPortals = Math.max(this.startPortalProgress.total - this.startPortalProgress.completed, 0);
+        title += ' | Start portals: ' + this.startPortalProgress.completed + '/' + this.startPortalProgress.total + ' (remaining ' + remainingPortals + ')';
+      }
+      $(openDialog).dialog({ title: title });
 
       // リスト部分の高さ：未リサイズなら画面の半分まで、リサイズ済みならそのサイズを保持
       this.fitListDialog('filter', openDialog, listBox);
@@ -1280,9 +1524,18 @@ function wrapper(plugin_info) {
 
     loadPortalMissions: function (guid, callback, errorcallback) {
       var me = this;
+      if (this.reusePortalMissionsWithinSession && this.sessionLoadedPortalGuids[guid] && this.cacheByPortalGuid[guid]) {
+        setTimeout(function () {
+          callback(this.cacheByPortalGuid[guid].data);
+        }.bind(this), 0);
+        return;
+      }
       // Mission summary rarely goes stale.
       if (me.cacheByPortalGuid[guid] && this.cacheByPortalGuid[guid].time > Date.now() - this.portalMissionsCacheTime) {
-        callback(me.cacheByPortalGuid[guid].data);
+        this.sessionLoadedPortalGuids[guid] = true;
+        setTimeout(function () {
+          callback(me.cacheByPortalGuid[guid].data);
+        }, 0);
         return;
       }
       window.postAjax(
@@ -1305,6 +1558,7 @@ function wrapper(plugin_info) {
             time: Date.now(),
             data: missions,
           };
+          me.sessionLoadedPortalGuids[guid] = true;
           me.storeCache();
           callback(missions);
         },
@@ -2182,6 +2436,22 @@ function wrapper(plugin_info) {
       this.cacheByPortalGuid = JSON.parse(localStorage['plugins-copy-missions-portalcache'] || '{}');
       this.cacheByMissionGuid = JSON.parse(localStorage['plugins-copy-missions-missioncache'] || '{}');
 
+      var options = JSON.parse(localStorage['plugins-copy-missions-options'] || '{}');
+      if (typeof options.allowStartPortalMissionList === 'boolean') {
+        this.allowStartPortalMissionList = options.allowStartPortalMissionList;
+      }
+      if (typeof options.reusePortalMissionsWithinSession === 'boolean') {
+        this.reusePortalMissionsWithinSession = options.reusePortalMissionsWithinSession;
+      }
+      if (Number.isInteger(options.missionCacheDays) && options.missionCacheDays >= 1 && options.missionCacheDays <= 30) {
+        this.missionCacheDays = options.missionCacheDays;
+      }
+      if (Number.isInteger(options.portalMissionsCacheDays) && options.portalMissionsCacheDays >= 1 && options.portalMissionsCacheDays <= 30) {
+        this.portalMissionsCacheDays = options.portalMissionsCacheDays;
+      }
+      this.missionCacheTime = this.missionCacheDays * 24 * 3600 * 1e3;
+      this.portalMissionsCacheTime = this.portalMissionsCacheDays * 24 * 3600 * 1e3;
+
       // 起動時に保存済みミッションキャッシュをFilter ListとMD Listへ取り込む
       var cachedMissions = Object.keys(this.cacheByMissionGuid).map(function (guid) {
         var cached = this.cacheByMissionGuid[guid];
@@ -2315,6 +2585,7 @@ function wrapper(plugin_info) {
         if (!portal.options.data.mission && !portal.options.data.mission50plus) {
           return;
         }
+        this.queueStartPortalForScan(portal);
         if (this.markedStarterPortals[guid]) {
           return;
         }
@@ -2429,6 +2700,12 @@ function wrapper(plugin_info) {
     },
 
     onMoveEnd: function () {
+      if (this.startPortalScanActive && this.allowStartPortalMissionList) {
+        var bounds = window.map.getBounds();
+        this.updateStartPortalScanBounds(bounds);
+        this.loadMissionsInBounds(bounds, this.addMissionsToFilterList.bind(this));
+        return;
+      }
       // When autorefresh is enabled (currently always)
       // and not showing mission list of one portal
       // and window not collapsed
@@ -2707,6 +2984,10 @@ function wrapper(plugin_info) {
         label: 'Copy Missions in view',
         action: () => window.plugin.copyMissions.openTopMissions(),
       });
+      IITC.toolbox.addButton({
+        label: 'Copy Missions options',
+        action: () => window.plugin.copyMissions.showOptionsDialog(),
+      });
 
       if (window.useAppPanes()) {
         this.mobilePane = document.createElement('div');
@@ -2718,6 +2999,16 @@ function wrapper(plugin_info) {
           'click',
           function () {
             this.openTopMissions();
+          }.bind(this),
+          false
+        );
+
+        var optionsButton = this.mobilePane.appendChild(document.createElement('button'));
+        optionsButton.textContent = 'Copy Missions options';
+        optionsButton.addEventListener(
+          'click',
+          function () {
+            this.showOptionsDialog();
           }.bind(this),
           false
         );
@@ -2766,6 +3057,10 @@ function wrapper(plugin_info) {
 
       this.missionStartLayer = new L.LayerGroup();
       this.missionLayer = new L.LayerGroup();
+
+      Object.keys(window.portals || {}).forEach(function (guid) {
+        me.onPortalChanged('add', guid, window.portals[guid]);
+      });
 
       window.layerChooser.addOverlay(this.missionStartLayer, 'Mission start portals', { default: false });
       window.layerChooser.addOverlay(this.missionLayer, 'Mission portals');
