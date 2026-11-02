@@ -493,6 +493,17 @@ function wrapper(plugin_info) {
       clearTimeout(this.startPortalLoadTimer);
     },
 
+    clearStartPortalScanState: function () {
+      this.stopStartPortalScan();
+      this.startPortalScanBounds = null;
+      this.startPortalScanGuids = {};
+      this.sessionStartPortalGuids = {};
+      this.processedStartPortalGuids = {};
+      this.startPortalProgress = null;
+      // Let the normal move-end refresh start a new scan after Clear.
+      this.isShowingPortalList = false;
+    },
+
     updateStartPortalScanBounds: function (bounds) {
       if (!this.startPortalScanActive) return;
       this.startPortalScanBounds = bounds || window.map.getBounds();
@@ -1089,6 +1100,7 @@ function wrapper(plugin_info) {
               css: { float: 'left', 'margin-right': '2px' },
               click: function () {
                 var me = window.plugin.copyMissions;
+                me.clearStartPortalScanState();
                 me.allMissions = {};
                 var cachedMissions = Object.keys(me.cacheByMissionGuid).map(function (guid) {
                   var cached = me.cacheByMissionGuid[guid];
@@ -1239,8 +1251,9 @@ function wrapper(plugin_info) {
 
       var title = 'Copy Filter List (' + missions.length + '/' + all.length + ')';
       if (this.startPortalProgress) {
-        var remainingPortals = Math.max(this.startPortalProgress.total - this.startPortalProgress.completed, 0);
-        title += ' | Start portals: ' + this.startPortalProgress.completed + '/' + this.startPortalProgress.total + ' (remaining ' + remainingPortals + ')';
+        // var remainingPortals = Math.max(this.startPortalProgress.total - this.startPortalProgress.completed, 0);
+        // title += ' | Start portals: ' + this.startPortalProgress.completed + '/' + this.startPortalProgress.total + ' (remaining ' + remainingPortals + ')';
+        title += ' | Start portals: ' + this.startPortalProgress.completed + '/' + this.startPortalProgress.total;
       }
       $(openDialog).dialog({ title: title });
 
