@@ -4,13 +4,9 @@
 // @category       Info
 // @description    View missions. Marking progress on waypoints/missions basis. Showing mission paths on the map.
 // @id             copy-missions
-// @match          https://intel.ingress.com/*
-// @match          http://intel.ingress.com/*
+// @match          https://*.ingress.com/*
+// @match          http://*.ingress.com/*
 // @match          https://intel-x.ingress.com/*
-// @match          https://*.ingress.com/intel*
-// @match          http://*.ingress.com/intel*
-// @match          https://*.ingress.com/mission/*
-// @match          http://*.ingress.com/mission/*
 // @grant          none
 // ==/UserScript==
 

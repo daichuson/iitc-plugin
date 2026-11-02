@@ -4,15 +4,9 @@
 // @category       Portal Info
 // @version        1.0.1
 // @description    make it easy to copy and paste portal name and intel url
-// @include        https://*.ingress.com/intel*
-// @include        http://*.ingress.com/intel*
-// @match          https://intel.ingress.com/*
-// @match          http://intel.ingress.com/*
+// @match          https://*.ingress.com/*
+// @match          http://*.ingress.com/*
 // @match          https://intel-x.ingress.com/*
-// @match          https://*.ingress.com/intel*
-// @match          http://*.ingress.com/intel*
-// @match          https://*.ingress.com/mission/*
-// @match          http://*.ingress.com/mission/*
 // @grant          none
 // ==/UserScript==
 
